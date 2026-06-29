@@ -23,7 +23,7 @@ Splice automatically adapts to your device environment to capture high-quality a
 ### Desktop Workflow (Zoom, Teams, & Microsoft Phone Link Calls)
 Splice is highly optimized to run on restricted enterprise hardware where third-party executables are blocked by IT policies. 
 
-1. Open `splice.html` in Chrome or Edge.
+1. Open `index.html` in Chrome or Edge.
 2. Click **Start Recording**. When prompted by the browser, grant permission to access your local microphone.
 3. The browser sharing dialog will appear. Your selection dictates what audio is merged:
     * **For Browser Meetings (Zoom/Teams Tabs):** Select the **Chrome/Edge Tab** option, pick your meeting tab, and ensure the "Share tab audio" checkbox is selected.
@@ -44,7 +44,7 @@ Splice is highly optimized to run on restricted enterprise hardware where third-
 Splice relies natively on Web Media APIs. Because it does not use cross-origin modules, it can be executed easily via offline local storage.
 
 ### Offline Local Storage
-Simply save the file as `splice.html` onto your local drive or an external thumb drive. Double-clicking the file to run it via the local file system (`file://splice.html`) works perfectly in standard modern browsers for all capture types.
+Simply save the file as `index.html` onto your local drive or an external thumb drive. Double-clicking the file to run it via the local file system (`file://index.html`) works perfectly in standard modern browsers for all capture types.
 
 ---
 
@@ -57,7 +57,7 @@ To publish a new version:
 2. Create a semantic version tag in git (e.g., `git tag v1.0.0`).
 3. Push the tag to the repository (`git push origin v1.0.0`).
 
-The automated pipeline will immediately draft a GitHub Release and attach the latest `splice.html` file as a direct download.
+The automated pipeline will immediately draft a GitHub Release and attach the latest `index.html` file as a direct download.
 
 ---
 
