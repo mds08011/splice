@@ -39,19 +39,12 @@ Splice is highly optimized to run on restricted enterprise hardware where third-
 
 ---
 
-## Local Execution & Deployment
+## Local Execution
 
-Splice relies natively on Web Media APIs. Because it does not use cross-origin modules, it can be executed using two methods:
+Splice relies natively on Web Media APIs. Because it does not use cross-origin modules, it can be executed easily via offline local storage.
 
-### 1. Offline Local Storage
+### Offline Local Storage
 Simply save the file as `splice.html` onto your local drive or an external thumb drive. Double-clicking the file to run it via the local file system (`file://splice.html`) works perfectly in standard modern browsers for all capture types.
-
-### 2. GitHub Pages Static Hosting
-To maintain instant access across both your workstation and mobile devices without manually copying files, host it securely for free using GitHub Pages:
-1. Push the file to a public or private GitHub repository, naming the file `index.html`.
-2. Navigate to repository **Settings** -> **Pages**.
-3. Under **Build and deployment**, set the source to **Deploy from a branch** and select `main` (or `master`).
-4. Click **Save**. Your instance will be live at `https://<your-username>.github.io/<repo-name>/` over a secure HTTPS connection.
 
 ---
 
