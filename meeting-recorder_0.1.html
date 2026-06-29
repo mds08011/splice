@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Recorder</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+  <style>
+    :root {
+      --bg:     #ffffff;
+      --bg2:    #f5f5f4;
+      --tx:     #1c1917;
+      --tx2:    #78716c;
+      --tx3:    #a8a29e;
+      --bd:     rgba(0,0,0,.12);
+      --bd2:    rgba(0,0,0,.22);
+      --red:    #dc2626;
+      --red-bg: #fef2f2;
+      --red-bd: #fecaca;
+      --grn:    #16a34a;
+      --blu:    #1d4ed8;
+      --blu-bg: #eff6ff;
+      --blu-bd: #bfdbfe;
+      --r:  12px;
+      --rs:  8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:     #1c1917;
+        --bg2:    #292524;
+        --tx:     #fafaf9;
+        --tx2:    #a8a29e;
+        --tx3:    #57534e;
+        --bd:     rgba(255,255,255,.1);
+        --bd2:    rgba(255,255,255,.22);
+        --red:    #f87171;
+        --red-bg: rgba(220,38,38,.12);
+        --red-bd: rgba(220,38,38,.35);
+        --grn:    #4ade80;
+        --blu:    #60a5fa;
+        --blu-bg: rgba(29,78,216,.12);
+        --blu-bd: rgba(29,78,216,.35);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--tx);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .wrap { width: 100%; max-width: 440px; }
+
+    .head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .head-left {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--tx2);
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .head-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blu); flex-shrink: 0; }
+
+    .mode-pill {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 100px;
+      border: 0.5px solid var(--bd2);
+      color: var(--tx3);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .mode-pill i { font-size: 12px; }
+
+    .status {
+      background: var(--bg2);
+      border-radius: var(--r);
+      padding: 32px 20px 28px;
+      text-align: center;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .status i { font-size: 36px; }
+    .s-title  { font-size: 16px; font-weight: 500; }
+    .s-sub    { font-size: 13px; color: var(--tx2); min-height: 1.4em; }
+
+    .how {
+      border: 0.5px solid var(--blu-bd);
+      background: var(--blu-bg);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .how-lbl { font-weight: 500; color: var(--blu); margin-bottom: 6px; }
+    .how ol  { padding-left: 1.1rem; color: var(--tx2); line-height: 2.1; }
+    .how .note { margin-top: 8px; font-size: 12px; color: var(--tx3); }
+
+    .btns { display: flex; gap: 8px; }
+
+    button {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--tx);
+      border: 0.5px solid var(--bd2);
+      border-radius: var(--rs);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background .15s;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:hover  { background: var(--bg2); }
+    button:active { transform: scale(.98); }
+    button.danger { color: var(--red); border-color: var(--red-bd); }
+
+    .err {
+      display: none;
+      margin-top: 10px;
+      border: 0.5px solid var(--red-bd);
+      background: var(--red-bg);
+      border-radius: var(--rs);
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--red);
+      line-height: 1.5;
+    }
+
+    .player-wrap { display: none; margin-top: 12px; }
+    audio        { width: 100%; display: block; }
+    .audio-note  { margin-top: 8px; font-size: 12px; color: var(--tx3); line-height: 1.6; }
+
+    footer {
+      margin-top: 28px;
+      font-size: 11px;
+      color: var(--tx3);
+      text-align: center;
+      line-height: 1.8;
+      border-top: 0.5px solid var(--bd);
+      padding-top: 16px;
+    }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.15} }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="head">
+    <span class="head-left">
+      <span class="head-dot"></span>
+      Meeting recorder
+    </span>
+    <span class="mode-pill" id="mode-pill"></span>
+  </div>
+
+  <div class="status">
+    <i id="si" class="ti ti-microphone" style="color:var(--tx2);" aria-hidden="true"></i>
+    <p id="st" class="s-title">Ready to record</p>
+    <p id="ss" class="s-sub">Audio stays on your device — never uploaded</p>
+  </div>
+
+  <!-- Desktop: tab/screen capture instructions -->
+  <div id="how-desk" class="how" style="display:none;">
+    <p class="how-lbl">How to use</p>
+    <ol>
+      <li>Join Teams or Zoom in <strong>another browser tab</strong></li>
+      <li>Click <em>Start recording</em> below</li>
+      <li>In Chrome's share dialog, select that tab</li>
+      <li>Confirm <strong>Share tab audio</strong> is checked, then click Share</li>
+    </ol>
+    <p class="note">Using the desktop app? Choose Window or Entire screen and enable system audio instead.</p>
+  </div>
+
+  <!-- Mobile: microphone recording instructions -->
+  <div id="how-mob" class="how" style="display:none;">
+    <p class="how-lbl">How to use</p>
+    <ol>
+      <li>Allow microphone access when prompted</li>
+      <li>Click <em>Start recording</em> and keep this screen open</li>
+      <li>Place the phone centrally if others are present</li>
+      <li>Tap <em>Stop recording</em> when done, then download the file</li>
+    </ol>
+    <p class="note">Keep your screen on during recording — locking the phone may pause capture on some browsers.</p>
+  </div>
+
+  <div id="btns" class="btns"></div>
+  <div id="err"  class="err"></div>
+
+  <div id="pw" class="player-wrap">
+    <audio id="pl" controls></audio>
+    <p id="audio-note" class="audio-note"></p>
+  </div>
+
+  <footer>
+    Desktop: captures tab audio &nbsp;&middot;&nbsp; Mobile: captures microphone<br>
+    All recordings stay on your device &nbsp;&middot;&nbsp; Icons require internet to display
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  var canCapture = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+
+  var captSt = null;   // full stream to stop/watch on cleanup
+  var rec, ch = [], tid, sec = 0, burl = null, mime = '', wlock = null;
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = s => {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), e = s % 60;
+    return h ? `${h}:${pad(m)}:${pad(e)}` : `${pad(m)}:${pad(e)}`;
+  };
+  const extOf = m => m.includes('mp4') ? 'm4a' : m.includes('ogg') ? 'ogg' : 'webm';
+
+  function card(ic, col, title, sub) {
+    $('si').className = 'ti ' + ic;
+    $('si').style.color = col;
+    $('st').textContent = title;
+    $('ss').textContent = sub;
+  }
+  function btns(html) { $('btns').innerHTML = html; }
+  function showErr(m) { $('err').textContent = m; $('err').style.display = 'block'; }
+  function clearErr() { $('err').style.display = 'none'; }
+  function showHow()  { $(canCapture ? 'how-desk' : 'how-mob').style.display = 'block'; }
+  function hideHow()  { $('how-desk').style.display = 'none'; $('how-mob').style.display = 'none'; }
+
+  async function acquireWakeLock() {
+    try { if ('wakeLock' in navigator) wlock = await navigator.wakeLock.request('screen'); }
+    catch (e) { /* silent — not available in all browsers */ }
+  }
+  function releaseWakeLock() {
+    if (wlock) { try { wlock.release(); } catch (e) {} wlock = null; }
+  }
+
+  function idle() {
+    clearErr();
+    $('si').style.animation = '';
+    $('pw').style.display   = 'none';
+    showHow();
+    card('ti-microphone', 'var(--tx2)', 'Ready to record', 'Audio stays on your device — never uploaded');
+    btns('<button onclick="_rs()"><i class="ti ti-circle" aria-hidden="true"></i> Start recording</button>');
+  }
+
+  // Shared recorder setup — audioStream is what MediaRecorder records;
+  // captSt (module-level) is the stream whose tracks to stop/watch.
+  function setupRec(audioStream) {
+    const mimes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    const chosen = mimes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    rec = new MediaRecorder(audioStream, chosen ? { mimeType: chosen } : {});
+    ch  = [];
+    mime = rec.mimeType;
+
+    rec.ondataavailable = e => { if (e.data.size > 0) ch.push(e.data); };
+
+    rec.onstop = () => {
+      clearInterval(tid);
+      releaseWakeLock();
+      if (captSt) captSt.getTracks().forEach(t => t.stop());
+
+      const blob = new Blob(ch, { type: mime });
+      if (burl) URL.revokeObjectURL(burl);
+      burl = URL.createObjectURL(blob);
+      $('pl').src = burl;
+      $('pw').style.display = 'block';
+      $('si').style.animation = '';
+
+      const ext = extOf(mime);
+      $('audio-note').textContent = ext === 'm4a'
+        ? 'Format: .m4a · plays in Safari, VLC, Apple Music'
+        : 'Format: .webm · plays in Chrome, Edge, Firefox, VLC · convert to MP3 with VLC if needed';
+
+      card('ti-circle-check', 'var(--grn)', 'Recording complete', 'Duration: ' + fmt(sec));
+      btns(
+        `<button onclick="_rd('${ext}')"><i class="ti ti-download" aria-hidden="true"></i> Download</button>` +
+        `<button onclick="_ri()" style="flex:none; padding:10px 16px;"><i class="ti ti-refresh" aria-hidden="true"></i> New</button>`
+      );
+    };
+
+    // Watch all tracks on the capture stream for user-initiated stop
+    captSt.getTracks().forEach(t => {
+      t.onended = () => { if (rec && rec.state === 'recording') rec.stop(); };
+    });
+
+    sec = 0;
+    rec.start(1000);
+    tid = setInterval(() => { sec++; $('ss').textContent = fmt(sec); }, 1000);
+
+    hideHow();
+    card('ti-circle-dot', 'var(--red)', 'Recording', '00:00');
+    $('si').style.animation = 'pulse 1.2s ease-in-out infinite';
+    btns('<button class="danger" onclick="_rp()"><i class="ti ti-player-stop" aria-hidden="true"></i> Stop recording</button>');
+  }
+
+  window._rs = async function () {
+    clearErr();
+
+    if (canCapture) {
+      // ── Desktop: capture tab or screen audio ──────────────────────────
+      let st;
+      try { st = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }); }
+      catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') showErr('Error: ' + e.message); return; }
+
+      const at = st.getAudioTracks();
+      if (!at.length) {
+        st.getTracks().forEach(t => t.stop());
+        showErr('No audio captured. Try again — select the tab and confirm "Share tab audio" is checked before clicking Share.');
+        return;
+      }
+      captSt = st;                         // watch/stop the full stream
+      setupRec(new MediaStream(at));       // record audio track only
+
+    } else {
+      // ── Mobile: microphone recording ──────────────────────────────────
+      await acquireWakeLock();
+      let mst;
+      try { mst = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+      catch (e) {
+        releaseWakeLock();
+        showErr(e.name === 'NotAllowedError'
+          ? 'Microphone access denied. Tap Allow when prompted and try again.'
+          : 'Microphone error: ' + e.message);
+        return;
+      }
+      captSt = mst;
+      setupRec(mst);
+    }
+  };
+
+  window._rp = () => { if (rec && rec.state === 'recording') rec.stop(); };
+
+  window._rd = ext => {
+    if (!burl) return;
+    const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const a  = document.createElement('a');
+    a.href = burl;
+    a.download = `meeting-${ts}.${ext}`;
+    a.click();
+  };
+
+  window._ri = () => {
+    rec = null; captSt = null; ch = []; sec = 0;
+    clearInterval(tid);
+    releaseWakeLock();
+    if (burl) { URL.revokeObjectURL(burl); burl = null; }
+    idle();
+  };
+
+  // Set mode pill based on detected capability
+  $('mode-pill').innerHTML = canCapture
+    ? '<i class="ti ti-device-desktop" aria-hidden="true"></i> Tab capture'
+    : '<i class="ti ti-device-mobile" aria-hidden="true"></i> Microphone';
+
+  idle();
+}());
+</script>
+
+</body>
+</html>

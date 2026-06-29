@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<!--
+  Meeting Audio Recorder — standalone single-file tool
+  ----------------------------------------------------
+  Hosting options:
+  • Open directly from a local drive in Chrome or Edge (file:// works fine
+    for getDisplayMedia / getUserMedia in these browsers).
+  • Or host on GitHub Pages: upload this file as index.html to a public
+    repository, then enable Pages under Settings → Pages.
+
+  Desktop (Chrome/Edge): captures audio from another browser tab via
+  getDisplayMedia. Mobile: records from the microphone via getUserMedia.
+  All audio stays on the device — nothing is uploaded anywhere.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting recorder</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#ffffff;
+    --bg2:#f5f5f4;
+    --tx:#1c1917;
+    --tx2:#78716c;
+    --tx3:#a8a29e;
+    --bd:rgba(0,0,0,.12);
+    --bd2:rgba(0,0,0,.22);
+    --red:#dc2626;
+    --red-bg:#fef2f2;
+    --red-bd:#fecaca;
+    --grn:#16a34a;
+    --blu:#1d4ed8;
+    --blu-bg:#eff6ff;
+    --blu-bd:#bfdbfe;
+    --r:12px;
+    --rs:8px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1c1917;
+      --bg2:#292524;
+      --tx:#fafaf9;
+      --tx2:#a8a29e;
+      --tx3:#57534e;
+      --bd:rgba(255,255,255,.1);
+      --bd2:rgba(255,255,255,.22);
+      --red:#f87171;
+      --red-bg:rgba(220,38,38,.12);
+      --red-bd:rgba(220,38,38,.35);
+      --grn:#4ade80;
+      --blu:#60a5fa;
+      --blu-bg:rgba(29,78,216,.12);
+      --blu-bd:rgba(29,78,216,.35);
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    justify-content:center;
+    padding:24px 16px;
+  }
+  .wrap{
+    width:100%;
+    max-width:440px;
+  }
+
+  /* Header */
+  .hdr{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:.72rem;
+    font-weight:600;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--tx2);
+  }
+  .brand .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--blu);
+    flex:none;
+  }
+  .pill{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    font-size:.72rem;
+    font-weight:600;
+    color:var(--blu);
+    background:var(--blu-bg);
+    border:1px solid var(--blu-bd);
+    border-radius:999px;
+    padding:3px 10px;
+    white-space:nowrap;
+  }
+  .pill i{font-size:.85rem;line-height:1;}
+
+  /* Status card */
+  .card{
+    background:var(--bg2);
+    border:1px solid var(--bd);
+    border-radius:var(--r);
+    padding:28px 20px;
+    text-align:center;
+  }
+  .stIcon{
+    font-size:2.3rem;
+    line-height:1;
+    color:var(--tx2);
+    display:inline-block;
+  }
+  .stIcon.rec{
+    color:var(--red);
+    animation:pulse 1.2s ease-in-out infinite;
+  }
+  .stIcon.done{color:var(--grn);}
+  @keyframes pulse{
+    0%,100%{opacity:1;}
+    50%{opacity:.35;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .stIcon.rec{animation:none;}
+  }
+  .stTitle{
+    font-size:1.15rem;
+    font-weight:650;
+    margin-top:10px;
+  }
+  .stSub{
+    font-size:.84rem;
+    color:var(--tx2);
+    margin-top:5px;
+  }
+  .timer{
+    font-variant-numeric:tabular-nums;
+    font-size:1.6rem;
+    font-weight:600;
+    margin-top:6px;
+    letter-spacing:.02em;
+  }
+
+  /* Audio preview */
+  .player{
+    margin-top:18px;
+    display:none;
+  }
+  .player audio{
+    width:100%;
+  }
+  .player .fmt{
+    font-size:.76rem;
+    color:var(--tx3);
+    margin-top:8px;
+    line-height:1.45;
+  }
+
+  /* How-to panel */
+  .howto{
+    background:var(--blu-bg);
+    border:1px solid var(--blu-bd);
+    border-radius:var(--r);
+    padding:16px 18px;
+    margin-top:14px;
+    font-size:.86rem;
+    line-height:1.5;
+  }
+  .howto h2{
+    font-size:.78rem;
+    font-weight:650;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--blu);
+    margin-bottom:8px;
+  }
+  .howto ol{
+    padding-left:1.2em;
+    color:var(--tx);
+  }
+  .howto ol li{margin:4px 0;}
+  .howto .note{
+    margin-top:10px;
+    font-size:.78rem;
+    color:var(--tx2);
+  }
+
+  /* Error panel */
+  .err{
+    display:none;
+    background:var(--red-bg);
+    border:1px solid var(--red-bd);
+    border-radius:var(--rs);
+    padding:12px 14px;
+    margin-top:14px;
+    font-size:.85rem;
+    line-height:1.45;
+    color:var(--tx);
+  }
+  .err .row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .err i.lead{color:var(--red);font-size:1.05rem;flex:none;margin-top:1px;}
+  .err .msg{flex:1;}
+  .err button{
+    background:none;
+    border:none;
+    color:var(--tx2);
+    cursor:pointer;
+    font-size:1rem;
+    padding:0;
+    flex:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  /* Buttons */
+  .btns{
+    display:flex;
+    gap:10px;
+    margin-top:16px;
+  }
+  .btn{
+    flex:1;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    font-size:.95rem;
+    font-weight:600;
+    font-family:inherit;
+    color:var(--tx);
+    background:var(--bg);
+    border:1px solid var(--bd2);
+    border-radius:var(--rs);
+    padding:12px 14px;
+    cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .btn:hover{background:var(--bg2);}
+  .btn:focus-visible{outline:2px solid var(--blu);outline-offset:2px;}
+  .btn.danger{
+    color:var(--red);
+    border-color:var(--red-bd);
+    background:var(--red-bg);
+  }
+  .btn.small{
+    flex:0 0 auto;
+    width:96px;
+  }
+  .btn i{font-size:1.05rem;line-height:1;}
+
+  /* Footer */
+  .foot{
+    margin-top:22px;
+    padding-top:14px;
+    border-top:1px solid var(--bd);
+    font-size:.74rem;
+    color:var(--tx3);
+    text-align:center;
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hdr">
+    <div class="brand"><span class="dot"></span>Meeting recorder</div>
+    <span class="pill" id="modePill"><i class="ti ti-device-desktop" id="pillIcon"></i><span id="pillText">Tab capture</span></span>
+  </div>
+
+  <div class="card">
+    <i class="ti ti-microphone stIcon" id="stIcon"></i>
+    <div class="stTitle" id="stTitle">Ready to record</div>
+    <div class="stSub" id="stSub">Audio stays on your device — never uploaded</div>
+    <div class="timer" id="timer" style="display:none">00:00</div>
+
+    <div class="player" id="player">
+      <audio controls id="audioEl"></audio>
+      <div class="fmt" id="fmtNote"></div>
+    </div>
+  </div>
+
+  <div class="err" id="errPanel">
+    <div class="row">
+      <i class="ti ti-alert-circle lead"></i>
+      <div class="msg" id="errMsg"></div>
+      <button onclick="window._rd()" aria-label="Dismiss error"><i class="ti ti-x"></i></button>
+    </div>
+  </div>
+
+  <div class="howto" id="howtoDesk">
+    <h2>How to record a meeting</h2>
+    <ol>
+      <li>Join Teams or Zoom in another browser tab</li>
+      <li>Click Start recording below</li>
+      <li>In Chrome's share dialog, select that tab</li>
+      <li>Confirm "Share tab audio" is checked, then click Share</li>
+    </ol>
+    <div class="note">Using the desktop app? Choose Window or Entire screen and enable system audio instead.</div>
+  </div>
+
+  <div class="howto" id="howtoMob" style="display:none">
+    <h2>How to record a meeting</h2>
+    <ol>
+      <li>Allow microphone access when prompted</li>
+      <li>Click Start recording and keep this screen open</li>
+      <li>Place the phone centrally if others are present</li>
+      <li>Tap Stop recording when done, then download the file</li>
+    </ol>
+    <div class="note">Keep your screen on during recording — locking the phone may pause capture on some browsers.</div>
+  </div>
+
+  <div class="btns" id="btns">
+    <button class="btn" id="btnStart" onclick="window._rs()"><i class="ti ti-circle"></i>Start recording</button>
+  </div>
+
+  <div class="foot">
+    Desktop: captures tab audio · Mobile: captures microphone<br>
+    All recordings stay on your device · Icons require internet to display
+  </div>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---- Environment detection -------------------------------------------
+  const hasDisplay = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  const isDesktop = hasDisplay;
+
+  // ---- State -------------------------------------------------------------
+  let rec = null;          // MediaRecorder
+  let captSt = null;       // full capture stream (incl. video track) for cleanup
+  let chunks = [];
+  let timerId = null;
+  let startTs = 0;
+  let elapsed = 0;
+  let blobUrl = null;
+  let mimeUsed = '';
+  let wakeLock = null;
+  let stopping = false;
+
+  // ---- Elements ------------------------------------------------------------
+  const $ = id => document.getElementById(id);
+  const stIcon = $('stIcon'), stTitle = $('stTitle'), stSub = $('stSub'),
+        timer = $('timer'), player = $('player'), audioEl = $('audioEl'),
+        fmtNote = $('fmtNote'), errPanel = $('errPanel'), errMsg = $('errMsg'),
+        howtoDesk = $('howtoDesk'), howtoMob = $('howtoMob'),
+        btns = $('btns'), pillIcon = $('pillIcon'), pillText = $('pillText');
+
+  // ---- Mode pill / instructions ------------------------------------------
+  if (!isDesktop) {
+    pillIcon.className = 'ti ti-device-mobile';
+    pillText.textContent = 'Microphone';
+    howtoDesk.style.display = 'none';
+    howtoMob.style.display = '';
+  }
+
+  // ---- MIME detection -------------------------------------------------------
+  const pickMime = () => {
+    const list = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4'
+    ];
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+      for (const m of list) if (MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return ''; // browser default
+  };
+
+  const extFor = mime => {
+    if (mime.includes('webm')) return 'webm';
+    if (mime.includes('ogg')) return 'ogg';
+    if (mime.includes('mp4')) return 'm4a';
+    return 'webm';
+  };
+
+  // ---- Helpers ----------------------------------------------------------------
+  const fmtTime = s => {
+    const h = Math.floor(s / 3600),
+          m = Math.floor((s % 3600) / 60),
+          sec = s % 60,
+          p = n => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
+  };
+
+  const showErr = msg => {
+    errMsg.textContent = msg;
+    errPanel.style.display = 'block';
+  };
+  const hideErr = () => { errPanel.style.display = 'none'; };
+
+  const stopTracks = st => {
+    if (!st) return;
+    st.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+  };
+
+  const releaseWake = async () => {
+    if (wakeLock) {
+      try { await wakeLock.release(); } catch (e) {}
+      wakeLock = null;
+    }
+  };
+
+  // ---- UI states --------------------------------------------------------------
+  const uiIdle = () => {
+    stIcon.className = 'ti ti-microphone stIcon';
+    stTitle.textContent = 'Ready to record';
+    stSub.textContent = 'Audio stays on your device — never uploaded';
+    stSub.style.display = '';
+    timer.style.display = 'none';
+    player.style.display = 'none';
+    (isDesktop ? howtoDesk : howtoMob).style.display = '';
+    btns.innerHTML =
+      '<button class="btn" onclick="window._rs()"><i class="ti ti-circle"></i>Start recording</button>';
+  };
+
+  const uiRecording = () => {
+    hideErr();
+    stIcon.className = 'ti ti-circle-dot stIcon rec';
+    stTitle.textContent = 'Recording';
+    stSub.style.display = 'none';
+    timer.style.display = '';
+    timer.textContent = '00:00';
+    player.style.display = 'none';
+    howtoDesk.style.display = 'none';
+    howtoMob.style.display = 'none';
+    btns.innerHTML =
+      '<button class="btn danger" onclick="window._rp()"><i class="ti ti-player-stop"></i>Stop recording</button>';
+  };
+
+  const uiComplete = dur => {
+    stIcon.className = 'ti ti-circle-check stIcon done';
+    stTitle.textContent = 'Recording complete';
+    stSub.textContent = 'Duration: ' + fmtTime(dur);
+    stSub.style.display = '';
+    timer.style.display = 'none';
+    player.style.display = 'block';
+    howtoDesk.style.display = 'none';
+    howtoMob.style.display = 'none';
+    const ext = extFor(mimeUsed);
+    fmtNote.textContent = `Saved as .${ext} audio. If you need MP3, open the file in VLC (Media → Convert/Save) or any audio converter.`;
+    btns.innerHTML =
+      '<button class="btn" onclick="window._ri()"><i class="ti ti-download"></i>Download</button>' +
+      '<button class="btn small" onclick="window._rd2()"><i class="ti ti-refresh"></i>New</button>';
+  };
+
+  // ---- Timer --------------------------------------------------------------------
+  const startTimer = () => {
+    startTs = Date.now();
+    elapsed = 0;
+    timerId = setInterval(() => {
+      elapsed = Math.floor((Date.now() - startTs) / 1000);
+      timer.textContent = fmtTime(elapsed);
+    }, 1000);
+  };
+  const stopTimer = () => {
+    if (timerId) { clearInterval(timerId); timerId = null; }
+    elapsed = Math.floor((Date.now() - startTs) / 1000);
+  };
+
+  // ---- Shared recorder setup -------------------------------------------------------
+  const setupRec = audioStream => {
+    chunks = [];
+    mimeUsed = pickMime();
+    rec = mimeUsed ? new MediaRecorder(audioStream, { mimeType: mimeUsed })
+                   : new MediaRecorder(audioStream);
+    mimeUsed = rec.mimeType || mimeUsed || 'audio/webm';
+
+    rec.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    rec.onstop = () => {
+      stopTimer();
+      stopTracks(captSt);
+      captSt = null;
+      releaseWake();
+      stopping = false;
+
+      const blob = new Blob(chunks, { type: mimeUsed });
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(blob);
+      audioEl.src = blobUrl;
+      uiComplete(elapsed);
+    };
+
+    rec.onerror = () => {
+      showErr('Something went wrong with the recorder. Please try starting a new recording.');
+    };
+
+    // If the user stops sharing from the Chrome toolbar (or a track dies),
+    // end the recording automatically.
+    if (captSt) {
+      captSt.getTracks().forEach(t => {
+        t.onended = () => {
+          if (rec && rec.state === 'recording' && !stopping) {
+            stopping = true;
+            rec.stop();
+          }
+        };
+      });
+    }
+
+    rec.start(1000); // collect data in 1-second chunks
+    startTimer();
+    uiRecording();
+  };
+
+  // ---- Desktop path (tab / window / screen audio) ----------------------------------
+  const startDesktop = async () => {
+    let st;
+    try {
+      st = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+    } catch (e) {
+      // Cancelled or denied the share dialog — fail silently.
+      if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return;
+      showErr('Could not start screen capture: ' + (e && e.message ? e.message : 'unknown error') + '. Please try again.');
+      return;
+    }
+
+    const audioTracks = st.getAudioTracks();
+    if (audioTracks.length === 0) {
+      stopTracks(st);
+      showErr('No audio was shared. Please try again and make sure "Share tab audio" is checked in the share dialog before clicking Share.');
+      return;
+    }
+
+    captSt = st; // keep full stream (incl. video) for cleanup + track-ended detection
+    const audioOnly = new MediaStream(audioTracks); // record audio only
+    setupRec(audioOnly);
+  };
+
+  // ---- Mobile path (microphone) ------------------------------------------------------
+  const startMobile = async () => {
+    let st;
+    try {
+      st = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      if (e && e.name === 'NotAllowedError') {
+        showErr('Microphone access was blocked. Please try again and tap Allow when your browser asks for microphone permission.');
+      } else if (e && e.name === 'AbortError') {
+        // Treat as silent cancel.
+      } else {
+        showErr('Could not access the microphone: ' + (e && e.message ? e.message : 'unknown error') + '.');
+      }
+      return;
+    }
+
+    captSt = st;
+
+    // Try to keep the screen awake during recording; fail silently if unsupported.
+    if ('wakeLock' in navigator) {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { wakeLock = null; }
+    }
+
+    setupRec(st);
+  };
+
+  // ---- Public handlers (called from inline onclick) -----------------------------------
+  window._rs = () => {          // start
+    hideErr();
+    if (isDesktop) startDesktop(); else startMobile();
+  };
+
+  window._rp = () => {          // stop
+    if (rec && rec.state === 'recording' && !stopping) {
+      stopping = true;
+      rec.stop();
+    }
+  };
+
+  window._rd = () => hideErr(); // dismiss error
+
+  window._ri = () => {          // download
+    if (!blobUrl) return;
+    const ext = extFor(mimeUsed);
+    const ts = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const name = `meeting-${ts.getFullYear()}-${p(ts.getMonth() + 1)}-${p(ts.getDate())}T${p(ts.getHours())}-${p(ts.getMinutes())}-${p(ts.getSeconds())}.${ext}`;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  window._rd2 = () => {         // new / reset
+    hideErr();
+    if (rec && rec.state === 'recording') { try { rec.stop(); } catch (e) {} }
+    stopTracks(captSt);
+    captSt = null;
+    releaseWake();
+    if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+    audioEl.removeAttribute('src');
+    chunks = [];
+    rec = null;
+    stopping = false;
+    uiIdle();
+  };
+
+})();
+</script>
+</body>
+</html>

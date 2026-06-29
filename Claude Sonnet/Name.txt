@@ -1,0 +1,7 @@
+Earmark — probably my favorite. Double meaning: to earmark something means to set it aside for future reference (exactly what you're doing), and the "ear" half nods to audio. Short, professional, memorable. Repo: earmark
+
+Verbatim — means word-for-word, which captures the purpose precisely — you're recording so you can reference exactly what was said. Sounds clean and intentional. Repo: verbatim
+
+FieldLog — leans into your construction context. Field logs and daily logs are native vocabulary in your work, and this tool is essentially a digital version of that habit. Repo: field-log
+
+Minutes — dead simple. Meeting minutes is literally the output this tool feeds into, so the name explains itself to anyone who sees it. Repo: minutes
