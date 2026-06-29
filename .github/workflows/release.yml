@@ -17,5 +17,5 @@ jobs:
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: splice.html
+          files: index.html
           generate_release_notes: true
