@@ -20,6 +20,9 @@
     --blu: #448aff;
     --blu-bg: rgba(68, 138, 255, 0.1);
     --grn: #69f0ae;
+    --grn-bg: rgba(105, 240, 174, 0.1);
+    --amb: #ffd740;
+    --amb-bg: rgba(255, 215, 64, 0.12);
     --r: 8px;
   }
   * { box-sizing: border-box; }
@@ -29,64 +32,200 @@
     font-family: system-ui, -apple-system, sans-serif;
     display: flex; justify-content: center;
     min-height: 100vh; line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
   }
-  .app { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 24px; }
-  .header { display: flex; justify-content: space-between; align-items: center; }
+  .app { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .brand { font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 8px; }
-  .icon-btn { 
-    background: none; border: 1px solid var(--bd); color: var(--tx); 
-    border-radius: 50%; width: 40px; height: 40px; display: flex; 
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .mode-pill {
+    font-size: 12px; color: var(--tx2); border: 1px solid var(--bd);
+    border-radius: 999px; padding: 6px 10px; display: flex; align-items: center; gap: 6px;
+    background: var(--bg2);
+  }
+  .icon-btn {
+    background: none; border: 1px solid var(--bd); color: var(--tx);
+    border-radius: 50%; width: 40px; height: 40px; display: flex;
     align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;
   }
   .icon-btn:hover { background: var(--bg3); }
-  .card { background-color: var(--bg2); border: 1px solid var(--bd); border-radius: var(--r); padding: 24px; }
-  .title { font-size: 16px; font-weight: 600; margin: 0 0 16px 0; display: flex; align-items: center; gap: 8px;}
-  
+  .card { background-color: var(--bg2); border: 1px solid var(--bd); border-radius: var(--r); padding: 20px; }
+  .title {
+    font-size: 16px; font-weight: 600; margin: 0 0 14px 0;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .title-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .title-row .title { margin: 0; }
+
   .btn {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     width: 100%; padding: 12px; border-radius: var(--r);
     border: 1px solid var(--bd); background-color: var(--bg3);
     color: var(--tx); font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s;
   }
-  .btn:hover { filter: brightness(1.2); }
+  .btn:hover:not(:disabled) { filter: brightness(1.15); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
   .btn-red { background-color: var(--red-bg); color: var(--red); border-color: rgba(255, 82, 82, 0.3); }
   .btn-primary { background-color: var(--blu-bg); color: var(--blu); border-color: rgba(68, 138, 255, 0.3); }
-  
-  textarea {
-    width: 100%; height: 120px; background: var(--bg); color: var(--tx);
-    border: 1px solid var(--bd); border-radius: var(--r); padding: 12px;
-    font-family: inherit; resize: vertical; margin-bottom: 16px;
-  }
-  select, input {
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-row .btn { flex: 1; min-width: 120px; }
+  .btn-sm { padding: 8px 12px; font-size: 13px; width: auto; }
+
+  textarea, select, input[type="text"], input[type="password"] {
     width: 100%; background: var(--bg); color: var(--tx);
     border: 1px solid var(--bd); border-radius: var(--r); padding: 12px;
-    font-family: inherit; margin-bottom: 16px;
+    font-family: inherit; margin-bottom: 12px;
   }
-  
+  textarea { height: 120px; resize: vertical; }
+  label.field-label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--tx2); }
+  .hint { font-size: 12px; color: var(--tx3); margin: -6px 0 12px; line-height: 1.45; }
+
   .output {
     background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r);
-    padding: 16px; min-height: 100px; margin-bottom: 16px; overflow-x: auto;
+    padding: 16px; min-height: 100px; margin-bottom: 12px; overflow-x: auto;
   }
   .output h1, .output h2, .output h3 { margin-top: 0; }
   .output p { margin-top: 0; }
-  
+
   .modal-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center;
-    z-index: 100;
+    z-index: 100; padding: 16px;
   }
   .modal {
     background: var(--bg2); padding: 24px; border-radius: var(--r);
-    width: 90%; max-width: 400px; border: 1px solid var(--bd);
+    width: 100%; max-width: 440px; border: 1px solid var(--bd); max-height: 90vh; overflow-y: auto;
   }
   .hidden { display: none !important; }
-  
-  .status-text { font-size: 14px; color: var(--tx2); text-align: center; margin-bottom: 16px; }
+
+  .status-text { font-size: 14px; color: var(--tx2); text-align: center; margin-bottom: 12px; }
   .recording-indicator { color: var(--red); animation: pulse 1.5s infinite ease-in-out; }
   @keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin 0.9s linear infinite; }
+
+  audio { width: 100%; display: block; margin: 8px 0 12px; }
+  .audio-note { font-size: 12px; color: var(--tx3); margin: 0 0 12px; }
+
+  /* Version badge: draft vs final */
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+    text-transform: uppercase; border-radius: 999px; padding: 4px 10px;
+    border: 1px solid var(--bd); color: var(--tx2); background: var(--bg);
+    white-space: nowrap;
+  }
+  .badge-draft { color: var(--amb); border-color: rgba(255, 215, 64, 0.35); background: var(--amb-bg); }
+  .badge-final { color: var(--grn); border-color: rgba(105, 240, 174, 0.35); background: var(--grn-bg); }
+  .badge-idle { color: var(--tx3); }
+
+  .tx-status {
+    font-size: 13px; color: var(--tx2); margin: 0 0 12px;
+    padding: 10px 12px; border-radius: var(--r);
+    background: var(--bg); border: 1px solid var(--bd);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .tx-status.busy { border-color: rgba(68, 138, 255, 0.35); color: var(--blu); }
+  .tx-status.ok { border-color: rgba(105, 240, 174, 0.3); color: var(--grn); }
+  .tx-status.warn { border-color: rgba(255, 215, 64, 0.3); color: var(--amb); }
+  .tx-status.err { border-color: rgba(255, 82, 82, 0.35); color: var(--red); }
+
+  /* Speaker legend */
+  .speaker-bar {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+  }
+  .speaker-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg); border: 1px solid var(--bd); border-radius: 999px;
+    padding: 4px 10px 4px 8px; font-size: 13px;
+  }
+  .speaker-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .speaker-chip button {
+    background: none; border: none; color: var(--tx2); cursor: pointer;
+    padding: 0; font-size: 14px; line-height: 1;
+  }
+  .speaker-chip button:hover { color: var(--blu); }
+
+  /* Transcript segments */
+  .segments {
+    background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r);
+    max-height: 420px; overflow-y: auto; margin-bottom: 12px;
+  }
+  .seg {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 8px 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--bd);
+    align-items: start;
+  }
+  .seg:last-child { border-bottom: none; }
+  .seg:hover { background: rgba(255,255,255,0.02); }
+  .seg-time {
+    font-size: 12px; font-variant-numeric: tabular-nums; color: var(--blu);
+    cursor: pointer; padding: 2px 0; font-weight: 600; user-select: none;
+  }
+  .seg-time:hover { text-decoration: underline; }
+  .seg-meta {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
+  }
+  .seg-speaker {
+    font-size: 12px; font-weight: 600; border: none; background: transparent;
+    color: var(--tx); padding: 0; cursor: pointer; text-align: left;
+  }
+  .seg-speaker:hover { color: var(--blu); }
+  .seg-reassign {
+    font-size: 11px; color: var(--tx3); background: var(--bg2);
+    border: 1px solid var(--bd); border-radius: 4px; padding: 2px 6px;
+    color: var(--tx2); cursor: pointer;
+  }
+  .seg-text {
+    width: 100%; min-height: 44px; background: transparent; color: var(--tx);
+    border: 1px solid transparent; border-radius: 6px; padding: 6px 8px;
+    font-family: inherit; font-size: 14px; line-height: 1.45; resize: vertical;
+    margin: 0;
+  }
+  .seg-text:hover, .seg-text:focus {
+    border-color: var(--bd); background: var(--bg2); outline: none;
+  }
+  .seg.empty-msg {
+    display: block; padding: 28px 16px; text-align: center;
+    color: var(--tx3); font-size: 14px; grid-template-columns: 1fr;
+  }
+
+  .toggle-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-bottom: 14px; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r);
+  }
+  .toggle-row input { width: auto; margin: 3px 0 0; accent-color: var(--blu); }
+  .toggle-row label { font-size: 13px; color: var(--tx); cursor: pointer; }
+  .toggle-row .sub { display: block; font-size: 12px; color: var(--tx3); margin-top: 2px; font-weight: 400; }
+
+  .how {
+    background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r);
+    padding: 12px 14px; margin-bottom: 14px; font-size: 13px; color: var(--tx2);
+  }
+  .how ol { margin: 6px 0 0; padding-left: 18px; }
+  .how li { margin-bottom: 4px; }
+  .how .note { margin: 8px 0 0; font-size: 12px; color: var(--tx3); }
+
+  .err-box {
+    background: var(--red-bg); border: 1px solid rgba(255,82,82,0.3);
+    color: var(--red); border-radius: var(--r); padding: 10px 12px;
+    font-size: 13px; margin-bottom: 12px;
+  }
+
+  footer {
+    text-align: center; font-size: 11px; color: var(--tx3); line-height: 1.7;
+    border-top: 1px solid var(--bd); padding-top: 14px; margin-top: 4px;
   }
 </style>
 </head>
@@ -95,53 +234,145 @@
 <div class="app">
   <div class="header">
     <div class="brand"><i class="ti ti-microphone-2"></i> SiteScribe</div>
-    <button class="icon-btn" onclick="toggleModal(true)" title="Settings"><i class="ti ti-settings"></i></button>
+    <div class="header-right">
+      <span class="mode-pill" id="mode-pill"></span>
+      <button class="icon-btn" onclick="toggleModal(true)" title="Settings" aria-label="Settings">
+        <i class="ti ti-settings"></i>
+      </button>
+    </div>
   </div>
 
+  <!-- ── Capture ───────────────────────────────────────────────────── -->
   <div class="card">
     <div class="title"><i class="ti ti-capture"></i> Capture Audio</div>
+
+    <label class="field-label" for="meeting-title">Meeting / project title (optional)</label>
+    <input type="text" id="meeting-title" placeholder="e.g. WWTP Phase 2 — Pre-con with GC">
+
+    <div id="how-desk" class="how hidden">
+      <strong>Desktop — both sides of the call</strong>
+      <ol>
+        <li>Join Teams/Zoom (or Phone Link) as usual</li>
+        <li>Click Start Recording, allow the microphone</li>
+        <li>In the share dialog, pick the meeting tab or entire screen</li>
+        <li>Enable <strong>Share tab/system audio</strong>, then Share</li>
+      </ol>
+      <p class="note">Mic + system audio are mixed so your voice and remote parties are both recorded.</p>
+    </div>
+    <div id="how-mob" class="how hidden">
+      <strong>Field / mobile — microphone</strong>
+      <ol>
+        <li>Allow microphone access when prompted</li>
+        <li>Keep this screen open (wake lock is requested)</li>
+        <li>Place the device centrally for in-person meetings</li>
+        <li>Stop when finished, then review transcript</li>
+      </ol>
+    </div>
+
     <div id="status" class="status-text">Ready to record</div>
-    
-    <button class="btn" id="btn-start" onclick="startRecording()">
-      <i class="ti ti-circle"></i> Start Recording
-    </button>
-    <button class="btn btn-red hidden" id="btn-stop" onclick="stopRecording()">
-      <i class="ti ti-player-stop"></i> Stop Recording
-    </button>
+    <div id="err-box" class="err-box hidden"></div>
+
+    <div class="btn-row" id="rec-btns">
+      <button class="btn" id="btn-start" onclick="startRecording()">
+        <i class="ti ti-circle"></i> Start Recording
+      </button>
+      <button class="btn btn-red hidden" id="btn-stop" onclick="stopRecording()">
+        <i class="ti ti-player-stop"></i> Stop Recording
+      </button>
+    </div>
+
+    <div id="player-wrap" class="hidden" style="margin-top:16px;">
+      <audio id="player" controls></audio>
+      <p id="audio-note" class="audio-note"></p>
+      <div class="btn-row">
+        <button class="btn btn-sm" onclick="downloadAudio()"><i class="ti ti-download"></i> Download audio</button>
+        <button class="btn btn-sm" onclick="newRecording()"><i class="ti ti-refresh"></i> New recording</button>
+      </div>
+    </div>
   </div>
 
+  <!-- ── Transcript ────────────────────────────────────────────────── -->
+  <div class="card" id="transcript-card">
+    <div class="title-row">
+      <div class="title" style="margin:0;"><i class="ti ti-align-left"></i> Transcript</div>
+      <span class="badge badge-idle" id="tx-version-badge">No transcript</span>
+    </div>
+
+    <!-- Status line for draft vs final processing -->
+    <div class="tx-status" id="tx-status">
+      <i class="ti ti-info-circle"></i>
+      <span id="tx-status-text">Record a meeting to generate a transcript. Turn on near-live draft in Settings for progressive updates during long sessions.</span>
+    </div>
+
+    <div id="speaker-bar" class="speaker-bar hidden"></div>
+
+    <div class="segments" id="segments">
+      <div class="seg empty-msg">No transcript yet</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-sm" id="btn-dl-tx" onclick="downloadTranscript()" disabled>
+        <i class="ti ti-file-text"></i> Download transcript
+      </button>
+      <button class="btn btn-sm" id="btn-final-tx" onclick="runFinalTranscription()" disabled>
+        <i class="ti ti-bolt"></i> Run final transcription
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Summarization ─────────────────────────────────────────────── -->
   <div class="card">
-    <div class="title"><i class="ti ti-align-left"></i> Live Transcript</div>
-    <textarea id="transcript" placeholder="Transcription will appear here..."></textarea>
-    
     <div class="title"><i class="ti ti-wand"></i> Summarization</div>
+    <p class="hint">Uses the <strong>final</strong> high-accuracy transcript when available (including your edits). Falls back to the draft only if no final exists yet.</p>
+    <label class="field-label" for="template">Mode</label>
     <select id="template">
-      <option value="technical_rfi">Technical RFI</option>
-      <option value="submittal_variance">Submittal Variance</option>
-      <option value="mop_work_plan">MOP/Work Plan</option>
-      <option value="differing_site_condition">Differing Site Condition (COR)</option>
       <option value="meeting_action_items">Meeting Action Items</option>
+      <option value="general">General (cleanup &amp; formatting)</option>
     </select>
     <button class="btn btn-primary" id="btn-summary" onclick="generateSummary()">
       <i class="ti ti-sparkles"></i> Generate Summary
     </button>
   </div>
 
+  <!-- ── Output ────────────────────────────────────────────────────── -->
   <div class="card hidden" id="output-card">
     <div class="title"><i class="ti ti-file-text"></i> Output</div>
     <div id="output" class="output"></div>
-    <button class="btn" onclick="copyOutput()">
-      <i class="ti ti-copy"></i> Copy to Clipboard
-    </button>
+    <div class="btn-row">
+      <button class="btn btn-sm" onclick="copyOutput()"><i class="ti ti-copy"></i> Copy</button>
+      <button class="btn btn-sm" onclick="exportProfessional('doc')"><i class="ti ti-file-description"></i> Export Word</button>
+      <button class="btn btn-sm" onclick="exportProfessional('pdf')"><i class="ti ti-printer"></i> Export PDF</button>
+    </div>
   </div>
+
+  <footer>
+    Privacy-first field recorder for water/wastewater project meetings<br>
+    Audio is processed only via your configured API key · Icons require network
+  </footer>
 </div>
 
+<!-- Settings modal -->
 <div class="modal-overlay" id="settings-modal">
   <div class="modal">
-    <div class="title">Settings</div>
-    <label style="display:block; margin-bottom: 8px; font-size: 14px;">Groq API Key</label>
-    <input type="password" id="api-key" placeholder="gsk_...">
-    <div style="display: flex; gap: 12px;">
+    <div class="title"><i class="ti ti-settings"></i> Settings</div>
+
+    <label class="field-label" for="api-key">Groq API Key</label>
+    <input type="password" id="api-key" placeholder="gsk_..." autocomplete="off">
+    <p class="hint">Used for Whisper transcription and LLM summarization. Stored only in this browser (localStorage).</p>
+
+    <!--
+      Near-live (chunked) draft is OPTIONAL. When off, SiteScribe keeps the
+      original simple flow: record fully, then one high-accuracy batch pass.
+    -->
+    <div class="toggle-row">
+      <input type="checkbox" id="near-live-toggle">
+      <label for="near-live-toggle">
+        Near-live draft transcript
+        <span class="sub">While recording, periodically transcribe audio so far (short lag). After stop, a full high-accuracy pass still replaces the draft. Off = simpler post-meeting-only flow.</span>
+      </label>
+    </div>
+
+    <div class="btn-row">
       <button class="btn" onclick="toggleModal(false)">Cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
     </div>
@@ -149,195 +380,905 @@
 </div>
 
 <script>
-  const el = id => document.getElementById(id);
-  
-  let apiKey = localStorage.getItem('sitescribe_groq_key') || '';
-  if (apiKey) el('api-key').value = apiKey;
-  
-  function toggleModal(show) {
-    el('settings-modal').style.display = show ? 'flex' : 'none';
-  }
-  
-  function saveSettings() {
-    apiKey = el('api-key').value.trim();
-    localStorage.setItem('sitescribe_groq_key', apiKey);
-    toggleModal(false);
-  }
+/**
+ * SiteScribe — privacy-first meeting recorder for infrastructure field teams.
+ *
+ * HYBRID TRANSCRIPTION FLOW
+ * -------------------------
+ * 1. Recording accumulates MediaRecorder chunks in memory (1s timeslice).
+ * 2. Optional near-live mode: every DRAFT_INTERVAL_MS, send the full audio
+ *    blob so far to Whisper (text mode) → populate draft segments.
+ * 3. On stop: always run a FINAL batch pass with verbose_json + segment
+ *    timestamps → replaces draft (unless user confirms keep edits).
+ * 4. Summarization / downloads / exports prefer final over draft.
+ *
+ * DRAFT VS FINAL STATE
+ * --------------------
+ * transcriptState.version: 'none' | 'draft' | 'final'
+ * transcriptState.phase: idle | draft_updating | final_processing | ready | error
+ * User text/speaker edits set userEdited=true. Final replace asks first if edited.
+ *
+ * TRANSCRIPTION LAYER (pluggable)
+ * --------------------------------
+ * All ASR goes through TranscriptionBackend.swap implementation if needed
+ * (e.g. different batch vs streaming endpoints). UI only consumes segments.
+ */
+(function () {
+  'use strict';
 
+  const el = id => document.getElementById(id);
+  const DRAFT_INTERVAL_MS = 25000; // near-live lag target (~25s)
+  const SPEAKER_GAP_SEC = 1.8;     // silence gap → possible speaker change
+  const SPEAKER_COLORS = ['#448aff', '#69f0ae', '#ffd740', '#ff5252', '#b388ff', '#24c6dc'];
+
+  // ── Settings ──────────────────────────────────────────────────────────
+  let apiKey = localStorage.getItem('sitescribe_groq_key') || '';
+  let nearLiveEnabled = localStorage.getItem('sitescribe_near_live') === '1';
+
+  if (apiKey) el('api-key').value = apiKey;
+  el('near-live-toggle').checked = nearLiveEnabled;
+
+  // ── Recording state ───────────────────────────────────────────────────
   let captSt = null, micStream = null, audioCtx = null;
   let rec = null, chunks = [];
-  let isDesktop = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+  let mimeUsed = '';
+  let audioBlob = null, audioUrl = null;
+  let recStartedAt = null, timerId = null, elapsedSec = 0;
+  let wakeLock = null;
+  let draftTimerId = null;
+  let draftInFlight = false;
+  let draftAbort = null;
+  let finalInFlight = false;
 
-  const startDesktop = async () => {
+  const isDesktop = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+
+  // ── Transcript state (draft vs final, edits, speakers) ────────────────
+  /**
+   * segments[]: { id, start, end, speakerId, text }
+   * speakers:   { [id]: displayName }
+   * version:    which generation is currently shown
+   * userEdited: true after any user text/speaker change (guards final replace)
+   */
+  const transcriptState = {
+    phase: 'idle',
+    version: 'none',
+    segments: [],
+    speakers: {},
+    userEdited: false,
+    summaryMarkdown: '',
+    summaryMode: '',
+    meetingStartedAt: null,
+    durationSec: 0
+  };
+
+  // ── Pluggable transcription backend ───────────────────────────────────
+  const TranscriptionBackend = {
+    /**
+     * Batch or draft STT via Groq Whisper.
+     * @param {Blob} blob
+     * @param {{ mode: 'draft'|'final', signal?: AbortSignal }} opts
+     * @returns {Promise<{ text: string, segments: Array<{start,end,text}> }>}
+     */
+    async transcribe(blob, opts = {}) {
+      const mode = opts.mode || 'final';
+      const formData = new FormData();
+      const ext = extOf(blob.type || mimeUsed || 'audio/webm');
+      formData.append('file', blob, `audio.${ext === 'm4a' ? 'm4a' : ext}`);
+      // Final pass: whisper-large-v3 for max accuracy; draft uses turbo for lower lag/cost
+      formData.append('model', mode === 'final' ? 'whisper-large-v3' : 'whisper-large-v3-turbo');
+      formData.append('response_format', 'verbose_json');
+      // Segment timestamps power click-to-seek (segment granularity adds no extra latency)
+      formData.append('timestamp_granularities[]', 'segment');
+      formData.append('temperature', '0');
+      formData.append('language', 'en');
+      // Style/context prompt (not instructions) — helps ASR with field terminology
+      formData.append(
+        'prompt',
+        'Water and wastewater construction meeting. Terms may include SCADA, lift station, ' +
+        'force main, manhole, RFI, submittal, MOP, clarifier, digester, CIP, gpm, psi, mgd.'
+      );
+
+      const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: formData,
+        signal: opts.signal
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const text = data.text || '';
+      let segments = Array.isArray(data.segments)
+        ? data.segments.map(s => ({
+            start: Number(s.start) || 0,
+            end: Number(s.end) || 0,
+            text: (s.text || '').trim()
+          })).filter(s => s.text)
+        : [];
+      // Fallback: single segment if API returns plain text only
+      if (!segments.length && text) {
+        segments = [{ start: 0, end: 0, text: text.trim() }];
+      }
+      return { text, segments };
+    }
+  };
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  const pad = n => String(n).padStart(2, '0');
+  const fmtTime = s => {
+    s = Math.max(0, Math.floor(s || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), e = s % 60;
+    return h ? `${h}:${pad(m)}:${pad(e)}` : `${pad(m)}:${pad(e)}`;
+  };
+  const extOf = m => {
+    m = (m || '').toLowerCase();
+    if (m.includes('mp4') || m.includes('m4a') || m.includes('aac')) return 'm4a';
+    if (m.includes('ogg')) return 'ogg';
+    return 'webm';
+  };
+  const tsFile = () => new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  const uid = () => Math.random().toString(36).slice(2, 10);
+
+  function showErr(msg) {
+    const box = el('err-box');
+    if (!msg) { box.classList.add('hidden'); box.textContent = ''; return; }
+    box.textContent = msg;
+    box.classList.remove('hidden');
+  }
+
+  function setRecStatus(text, recording) {
+    el('status').textContent = text;
+    el('status').classList.toggle('recording-indicator', !!recording);
+  }
+
+  function setTxStatus(kind, text) {
+    const box = el('tx-status');
+    const icon = box.querySelector('i');
+    box.className = 'tx-status' + (kind ? ' ' + kind : '');
+    const icons = {
+      busy: 'ti ti-loader-2 spin',
+      ok: 'ti ti-circle-check',
+      warn: 'ti ti-alert-triangle',
+      err: 'ti ti-alert-circle',
+      '': 'ti ti-info-circle'
+    };
+    icon.className = icons[kind] || icons[''];
+    el('tx-status-text').textContent = text;
+  }
+
+  function updateVersionBadge() {
+    const b = el('tx-version-badge');
+    b.className = 'badge';
+    if (transcriptState.version === 'final') {
+      b.classList.add('badge-final');
+      b.textContent = transcriptState.userEdited ? 'Final (edited)' : 'Final';
+    } else if (transcriptState.version === 'draft') {
+      b.classList.add('badge-draft');
+      b.textContent = transcriptState.userEdited ? 'Draft (edited)' : 'Draft';
+    } else {
+      b.classList.add('badge-idle');
+      b.textContent = 'No transcript';
+    }
+  }
+
+  function getActiveTranscriptText() {
+    return transcriptState.segments.map(s => {
+      const sp = transcriptState.speakers[s.speakerId] || `Speaker ${s.speakerId}`;
+      const t = fmtTime(s.start);
+      return `[${t}] ${sp}: ${s.text}`;
+    }).join('\n');
+  }
+
+  function getPlainTranscriptText() {
+    return transcriptState.segments.map(s => {
+      const sp = transcriptState.speakers[s.speakerId] || `Speaker ${s.speakerId}`;
+      return `${sp}: ${s.text}`;
+    }).join('\n\n');
+  }
+
+  /**
+   * Basic speaker labeling: alternate speaker on silence gaps.
+   * Good enough for 2-party calls; users can rename + reassign per segment.
+   */
+  function assignSpeakers(rawSegments) {
+    const speakers = {};
+    let speaker = 1;
+    let prevEnd = null;
+    const segments = rawSegments.map(raw => {
+      if (prevEnd != null && (raw.start - prevEnd) >= SPEAKER_GAP_SEC) {
+        speaker = speaker === 1 ? 2 : 1;
+      }
+      // Long monologues can introduce Speaker 3+ after returning from a long gap
+      // once we already have 2 speakers and gap is very large — keep toggle simple.
+      const speakerId = String(speaker);
+      if (!speakers[speakerId]) speakers[speakerId] = `Speaker ${speakerId}`;
+      prevEnd = raw.end || raw.start;
+      return {
+        id: uid(),
+        start: raw.start,
+        end: raw.end,
+        speakerId,
+        text: raw.text
+      };
+    });
+    // Ensure at least Speaker 1 exists for empty-edge cases
+    if (!Object.keys(speakers).length) speakers['1'] = 'Speaker 1';
+    return { segments, speakers };
+  }
+
+  function applyTranscript(rawSegments, version) {
+    const { segments, speakers } = assignSpeakers(rawSegments);
+    // Preserve renames if speaker ids already known
+    const mergedSpeakers = { ...speakers };
+    Object.keys(transcriptState.speakers).forEach(id => {
+      if (mergedSpeakers[id]) mergedSpeakers[id] = transcriptState.speakers[id];
+    });
+    transcriptState.segments = segments;
+    transcriptState.speakers = mergedSpeakers;
+    transcriptState.version = version;
+    transcriptState.userEdited = false;
+    transcriptState.phase = 'ready';
+    renderTranscript();
+  }
+
+  function renderTranscript() {
+    updateVersionBadge();
+    const host = el('segments');
+    const bar = el('speaker-bar');
+    const hasSegs = transcriptState.segments.length > 0;
+
+    el('btn-dl-tx').disabled = !hasSegs;
+    // Allow manual final re-run when we have audio and aren't already processing
+    el('btn-final-tx').disabled = !audioBlob || finalInFlight || transcriptState.phase === 'final_processing';
+
+    if (!hasSegs) {
+      host.innerHTML = '<div class="seg empty-msg">No transcript yet</div>';
+      bar.classList.add('hidden');
+      bar.innerHTML = '';
+      return;
+    }
+
+    // Speaker legend with rename
+    bar.classList.remove('hidden');
+    bar.innerHTML = Object.keys(transcriptState.speakers).sort().map((id, i) => {
+      const color = SPEAKER_COLORS[(Number(id) - 1) % SPEAKER_COLORS.length] || SPEAKER_COLORS[i % SPEAKER_COLORS.length];
+      const name = transcriptState.speakers[id];
+      return `<span class="speaker-chip" title="Click pencil to rename">
+        <span class="speaker-dot" style="background:${color}"></span>
+        <span>${escapeHtml(name)}</span>
+        <button type="button" onclick="renameSpeaker('${id}')" aria-label="Rename ${escapeHtml(name)}">
+          <i class="ti ti-pencil"></i>
+        </button>
+      </span>`;
+    }).join('');
+
+    const speakerIds = Object.keys(transcriptState.speakers).sort((a, b) => Number(a) - Number(b));
+
+    host.innerHTML = transcriptState.segments.map(seg => {
+      const color = SPEAKER_COLORS[(Number(seg.speakerId) - 1) % SPEAKER_COLORS.length];
+      const name = transcriptState.speakers[seg.speakerId] || `Speaker ${seg.speakerId}`;
+      const speakerOpts = speakerIds.map(id =>
+        `<option value="${id}"${id === seg.speakerId ? ' selected' : ''}>${escapeHtml(transcriptState.speakers[id])}</option>`
+      ).join('') + `<option value="__new__">+ New speaker</option>`;
+      return `<div class="seg" data-id="${seg.id}">
+        <div class="seg-time" onclick="seekTo(${Number(seg.start) || 0})" title="Seek audio to ${fmtTime(seg.start)}">${fmtTime(seg.start)}</div>
+        <div>
+          <div class="seg-meta">
+            <button type="button" class="seg-speaker" style="color:${color}" onclick="renameSpeaker('${seg.speakerId}')" title="Rename speaker">
+              ${escapeHtml(name)}
+            </button>
+            <select class="seg-reassign" onchange="reassignSpeaker('${seg.id}', this.value)" title="Change speaker for this segment" aria-label="Reassign speaker">
+              ${speakerOpts}
+            </select>
+          </div>
+          <textarea class="seg-text" rows="2" oninput="editSegmentText('${seg.id}', this.value)"
+            aria-label="Editable transcript segment">${escapeHtml(seg.text)}</textarea>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Segment / speaker mutations (global for inline handlers) ──────────
+  window.editSegmentText = function (id, text) {
+    const seg = transcriptState.segments.find(s => s.id === id);
+    if (!seg) return;
+    seg.text = text;
+    transcriptState.userEdited = true;
+    updateVersionBadge();
+  };
+
+  window.renameSpeaker = function (speakerId) {
+    const current = transcriptState.speakers[speakerId] || `Speaker ${speakerId}`;
+    const next = prompt('Rename speaker (updates all of their segments):', current);
+    if (next == null) return;
+    const name = next.trim();
+    if (!name) return;
+    transcriptState.speakers[speakerId] = name;
+    transcriptState.userEdited = true;
+    renderTranscript();
+  };
+
+  window.reassignSpeaker = function (segId, value) {
+    const seg = transcriptState.segments.find(s => s.id === segId);
+    if (!seg) return;
+    let speakerId = value;
+    if (value === '__new__') {
+      const ids = Object.keys(transcriptState.speakers).map(Number).filter(n => !isNaN(n));
+      const n = (ids.length ? Math.max(...ids) : 0) + 1;
+      speakerId = String(n);
+      const label = prompt('Name for new speaker:', `Speaker ${n}`);
+      transcriptState.speakers[speakerId] = (label && label.trim()) || `Speaker ${n}`;
+    }
+    seg.speakerId = speakerId;
+    transcriptState.userEdited = true;
+    renderTranscript();
+  };
+
+  window.seekTo = function (seconds) {
+    const player = el('player');
+    if (!audioUrl) return;
+    player.currentTime = Math.max(0, Number(seconds) || 0);
+    player.play().catch(() => { /* autoplay may block; seek still applied */ });
+  };
+
+  // ── Settings UI ───────────────────────────────────────────────────────
+  window.toggleModal = function (show) {
+    el('settings-modal').style.display = show ? 'flex' : 'none';
+    if (show) {
+      el('api-key').value = apiKey;
+      el('near-live-toggle').checked = nearLiveEnabled;
+    }
+  };
+
+  window.saveSettings = function () {
+    apiKey = el('api-key').value.trim();
+    nearLiveEnabled = el('near-live-toggle').checked;
+    localStorage.setItem('sitescribe_groq_key', apiKey);
+    localStorage.setItem('sitescribe_near_live', nearLiveEnabled ? '1' : '0');
+    toggleModal(false);
+  };
+
+  // ── Wake lock ─────────────────────────────────────────────────────────
+  async function acquireWakeLock() {
+    try {
+      if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    } catch (_) { /* optional */ }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) {
+      try { wakeLock.release(); } catch (_) {}
+      wakeLock = null;
+    }
+  }
+
+  // ── Recording ─────────────────────────────────────────────────────────
+  async function startDesktop() {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
-      alert('Microphone access denied.'); return;
+      showErr('Microphone access denied. Allow the mic and try again.');
+      return;
     }
+    let displayStream;
     try {
-      captSt = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     } catch (e) {
-      micStream.getTracks().forEach(t => t.stop()); return;
-    }
-    
-    const sysTracks = captSt.getAudioTracks();
-    if (!sysTracks.length) {
-      captSt.getTracks().forEach(t => t.stop());
       micStream.getTracks().forEach(t => t.stop());
-      alert('No system audio found. Turn on "Share system audio".'); return;
+      micStream = null;
+      if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
+        showErr('Screen/tab share failed: ' + e.message);
+      }
+      return;
     }
-    
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AudioContext();
+
+    const sysTracks = displayStream.getAudioTracks();
+    if (!sysTracks.length) {
+      displayStream.getTracks().forEach(t => t.stop());
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+      showErr('No system/tab audio found. Enable “Share tab audio” or “Share system audio” and try again.');
+      return;
+    }
+
+    captSt = displayStream;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
     const dest = audioCtx.createMediaStreamDestination();
-    
     audioCtx.createMediaStreamSource(new MediaStream([sysTracks[0]])).connect(dest);
     audioCtx.createMediaStreamSource(micStream).connect(dest);
-    
     setupRec(dest.stream);
-  };
+  }
 
-  const startMobile = async () => {
+  async function startMobile() {
+    await acquireWakeLock();
     try {
       captSt = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
-      alert('Microphone access denied.'); return;
+      releaseWakeLock();
+      showErr(e.name === 'NotAllowedError'
+        ? 'Microphone access denied. Tap Allow when prompted.'
+        : 'Microphone error: ' + e.message);
+      return;
     }
     setupRec(captSt);
-  };
+  }
 
-  const setupRec = (stream) => {
+  function setupRec(stream) {
+    showErr('');
     chunks = [];
-    let mimeUsed = '';
+    mimeUsed = '';
     const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
-    for (let t of types) {
+    for (const t of types) {
       if (MediaRecorder.isTypeSupported(t)) { mimeUsed = t; break; }
     }
-    
+
+    // Reset transcript for new session
+    resetTranscriptState(false);
+    transcriptState.meetingStartedAt = new Date();
+    recStartedAt = Date.now();
+    elapsedSec = 0;
+
     rec = mimeUsed ? new MediaRecorder(stream, { mimeType: mimeUsed }) : new MediaRecorder(stream);
-    
-    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-    
+    mimeUsed = rec.mimeType || mimeUsed || 'audio/webm';
+
+    rec.ondataavailable = e => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
     rec.onstop = async () => {
-      el('status').innerText = 'Processing audio...';
-      el('status').classList.remove('recording-indicator');
-      const blob = new Blob(chunks, { type: mimeUsed || 'audio/webm' });
-      await transcribeAudio(blob);
+      clearInterval(timerId);
+      stopDraftLoop();
+      releaseWakeLock();
+
+      // Stop capture tracks
+      if (captSt) captSt.getTracks().forEach(t => t.stop());
+      if (micStream) micStream.getTracks().forEach(t => t.stop());
+      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
+      captSt = null;
+      micStream = null;
+      audioCtx = null;
+
+      audioBlob = new Blob(chunks, { type: mimeUsed });
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl = URL.createObjectURL(audioBlob);
+
+      const player = el('player');
+      player.src = audioUrl;
+      el('player-wrap').classList.remove('hidden');
+      const ext = extOf(mimeUsed);
+      el('audio-note').textContent = ext === 'm4a'
+        ? 'Format: .m4a · Duration: ' + fmtTime(elapsedSec)
+        : 'Format: .webm · Duration: ' + fmtTime(elapsedSec) + ' · Convert with VLC if needed';
+
+      transcriptState.durationSec = elapsedSec;
+      setRecStatus('Recording complete · ' + fmtTime(elapsedSec), false);
+      el('btn-start').classList.remove('hidden');
+      el('btn-stop').classList.add('hidden');
+      el('btn-final-tx').disabled = false;
+
+      // FINAL high-accuracy batch transcription (always after stop)
+      await runFinalTranscription(true);
     };
 
     if (captSt) {
       captSt.getTracks().forEach(t => {
-        t.onended = () => { if (rec && rec.state !== 'inactive') stopRecording(); };
+        t.onended = () => {
+          if (rec && rec.state !== 'inactive') stopRecording();
+        };
       });
     }
 
     rec.start(1000);
-    
+    timerId = setInterval(() => {
+      elapsedSec = Math.floor((Date.now() - recStartedAt) / 1000);
+      setRecStatus('Recording · ' + fmtTime(elapsedSec), true);
+    }, 1000);
+
     el('btn-start').classList.add('hidden');
     el('btn-stop').classList.remove('hidden');
-    el('status').innerText = 'Recording...';
-    el('status').classList.add('recording-indicator');
-  };
+    el('player-wrap').classList.add('hidden');
+    el('how-desk').classList.add('hidden');
+    el('how-mob').classList.add('hidden');
+    setRecStatus('Recording · 00:00', true);
 
-  function startRecording() {
-    if (!apiKey) { alert('Please configure your Groq API key in Settings first.'); toggleModal(true); return; }
-    if (isDesktop) startDesktop();
-    else startMobile();
-  }
-
-  function stopRecording() {
-    if (rec && rec.state !== 'inactive') rec.stop();
-    if (captSt) captSt.getTracks().forEach(t => t.stop());
-    if (micStream) micStream.getTracks().forEach(t => t.stop());
-    if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(()=>{});
-    
-    el('btn-start').classList.remove('hidden');
-    el('btn-stop').classList.add('hidden');
-  }
-
-  async function transcribeAudio(blob) {
-    el('status').innerText = 'Transcribing...';
-    el('transcript').value = 'Uploading and transcribing...';
-    try {
-      const formData = new FormData();
-      formData.append("file", blob, "audio.webm");
-      formData.append("model", "whisper-large-v3-turbo");
-      
-      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}` },
-        body: formData
-      });
-      
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      el('transcript').value = data.text || '';
-      el('status').innerText = 'Ready to record';
-    } catch (e) {
-      console.error(e);
-      el('transcript').value = 'Error transcribing: ' + e.message;
-      el('status').innerText = 'Transcription failed';
+    // Optional near-live draft loop
+    if (nearLiveEnabled) startDraftLoop();
+    else {
+      setTxStatus('', 'Recording… Near-live draft is off. A high-accuracy final transcript will run when you stop.');
     }
   }
 
-  async function generateSummary() {
-    const transcript = el('transcript').value.trim();
-    if (!transcript) { alert('No transcript available to summarize.'); return; }
-    if (!apiKey) { alert('Please configure your Groq API key in Settings first.'); toggleModal(true); return; }
-    
-    el('btn-summary').innerText = 'Generating...';
-    el('btn-summary').disabled = true;
-    
+  window.startRecording = function () {
+    if (!apiKey) {
+      alert('Configure your Groq API key in Settings first.');
+      toggleModal(true);
+      return;
+    }
+    if (isDesktop) startDesktop();
+    else startMobile();
+  };
+
+  window.stopRecording = function () {
+    if (rec && rec.state !== 'inactive') rec.stop();
+    // Tracks cleaned in onstop; also stop early if share still open
+    el('btn-start').classList.remove('hidden');
+    el('btn-stop').classList.add('hidden');
+    setRecStatus('Processing…', false);
+  };
+
+  window.newRecording = function () {
+    if (rec && rec.state !== 'inactive') return;
+    if (transcriptState.userEdited && !confirm('Start a new recording? Current transcript edits will be cleared.')) return;
+    stopDraftLoop();
+    if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
+    audioBlob = null;
+    chunks = [];
+    el('player').removeAttribute('src');
+    el('player-wrap').classList.add('hidden');
+    el('output-card').classList.add('hidden');
+    resetTranscriptState(true);
+    setRecStatus('Ready to record', false);
+    showErr('');
+    if (isDesktop) el('how-desk').classList.remove('hidden');
+    else el('how-mob').classList.remove('hidden');
+  };
+
+  function resetTranscriptState(full) {
+    transcriptState.phase = 'idle';
+    transcriptState.version = 'none';
+    transcriptState.segments = [];
+    transcriptState.speakers = {};
+    transcriptState.userEdited = false;
+    if (full) {
+      transcriptState.summaryMarkdown = '';
+      transcriptState.summaryMode = '';
+      transcriptState.meetingStartedAt = null;
+      transcriptState.durationSec = 0;
+    }
+    renderTranscript();
+    setTxStatus('', 'Record a meeting to generate a transcript. Turn on near-live draft in Settings for progressive updates during long sessions.');
+  }
+
+  // ── Near-live (chunked) draft loop ────────────────────────────────────
+  /**
+   * Periodically builds a Blob from ALL chunks so far (includes WebM headers
+   * from the first chunk) and requests a draft transcription. Overlapping
+   * requests are skipped; an in-flight draft is aborted when a newer one starts
+   * after the interval, or when recording stops for the final pass.
+   */
+  function startDraftLoop() {
+    stopDraftLoop();
+    setTxStatus('busy', 'Near-live draft enabled — first draft appears after ~' + (DRAFT_INTERVAL_MS / 1000) + 's…');
+    draftTimerId = setInterval(() => { void runDraftTranscription(); }, DRAFT_INTERVAL_MS);
+  }
+
+  function stopDraftLoop() {
+    if (draftTimerId) { clearInterval(draftTimerId); draftTimerId = null; }
+    if (draftAbort) {
+      try { draftAbort.abort(); } catch (_) {}
+      draftAbort = null;
+    }
+    draftInFlight = false;
+  }
+
+  async function runDraftTranscription() {
+    if (!nearLiveEnabled || draftInFlight || finalInFlight) return;
+    if (!chunks.length || !rec || rec.state === 'inactive') return;
+    // Need a meaningful amount of audio before first draft
+    if (elapsedSec < 8) return;
+
+    draftInFlight = true;
+    transcriptState.phase = 'draft_updating';
+    setTxStatus('busy', 'Draft transcript updating…');
+
+    const blob = new Blob(chunks, { type: mimeUsed || 'audio/webm' });
+    if (draftAbort) {
+      try { draftAbort.abort(); } catch (_) {}
+    }
+    draftAbort = new AbortController();
+
+    try {
+      const result = await TranscriptionBackend.transcribe(blob, {
+        mode: 'draft',
+        signal: draftAbort.signal
+      });
+      // Ignore if user already has final or heavily edited mid-flight
+      if (transcriptState.version === 'final') return;
+      if (transcriptState.userEdited && transcriptState.version === 'draft') {
+        // Keep user edits; only note that a newer draft was skipped
+        setTxStatus('warn', 'Draft update skipped — you have local edits. Final pass after stop will still run.');
+        return;
+      }
+      applyTranscript(result.segments, 'draft');
+      setTxStatus('warn', 'Draft transcript updating… (near-live, lower accuracy). Final high-accuracy version runs when recording stops.');
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      console.error(e);
+      setTxStatus('err', 'Draft transcription error: ' + (e.message || e));
+    } finally {
+      draftInFlight = false;
+    }
+  }
+
+  /**
+   * Full high-accuracy batch pass over the complete recording.
+   * Replaces draft by default; confirms first if the user edited the draft.
+   */
+  window.runFinalTranscription = async function (auto) {
+    if (!audioBlob) {
+      if (!auto) alert('No recording available.');
+      return;
+    }
+    if (!apiKey) {
+      alert('Configure your Groq API key in Settings first.');
+      toggleModal(true);
+      return;
+    }
+    if (finalInFlight) return;
+
+    if (
+      transcriptState.userEdited &&
+      transcriptState.version === 'draft' &&
+      !confirm('You edited the draft transcript. Replace it with the new high-accuracy final version? (Edits will be lost.)')
+    ) {
+      setTxStatus('warn', 'Kept your edited draft. You can re-run final transcription later, or generate a summary from the draft.');
+      return;
+    }
+
+    finalInFlight = true;
+    transcriptState.phase = 'final_processing';
+    el('btn-final-tx').disabled = true;
+    setTxStatus('busy', 'Processing final high-accuracy version…');
+
+    try {
+      const result = await TranscriptionBackend.transcribe(audioBlob, { mode: 'final' });
+      applyTranscript(result.segments, 'final');
+      setTxStatus('ok', 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.');
+    } catch (e) {
+      console.error(e);
+      transcriptState.phase = 'error';
+      setTxStatus('err', 'Final transcription failed: ' + (e.message || e));
+      // Keep any existing draft visible
+      if (transcriptState.version === 'none') updateVersionBadge();
+    } finally {
+      finalInFlight = false;
+      el('btn-final-tx').disabled = !audioBlob;
+    }
+  };
+
+  // ── Downloads ─────────────────────────────────────────────────────────
+  window.downloadAudio = function () {
+    if (!audioBlob) return;
+    const a = document.createElement('a');
+    a.href = audioUrl;
+    a.download = `sitescribe-${tsFile()}.${extOf(mimeUsed)}`;
+    a.click();
+  };
+
+  window.downloadTranscript = function () {
+    if (!transcriptState.segments.length) return;
+    const header = [
+      'SiteScribe Transcript',
+      'Version: ' + transcriptState.version + (transcriptState.userEdited ? ' (edited)' : ''),
+      'Meeting: ' + (el('meeting-title').value.trim() || '(untitled)'),
+      'Recorded: ' + (transcriptState.meetingStartedAt ? transcriptState.meetingStartedAt.toISOString() : ''),
+      'Duration: ' + fmtTime(transcriptState.durationSec || elapsedSec),
+      ''
+    ].join('\n');
+    const body = getActiveTranscriptText();
+    const blob = new Blob([header + body + '\n'], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sitescribe-transcript-${tsFile()}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  // ── Summarization ─────────────────────────────────────────────────────
+  /**
+   * Default source is the on-screen transcript (final when present, else draft),
+   * including user corrections — final version is what we keep on screen after stop.
+   */
+  window.generateSummary = async function () {
+    const transcript = getPlainTranscriptText().trim();
+    if (!transcript) {
+      alert('No transcript available to summarize. Record and wait for transcription first.');
+      return;
+    }
+    if (!apiKey) {
+      alert('Configure your Groq API key in Settings first.');
+      toggleModal(true);
+      return;
+    }
+    if (transcriptState.version === 'draft') {
+      const cont = confirm('You are summarizing a DRAFT transcript (near-live). For project records, wait for the final high-accuracy version. Continue anyway?');
+      if (!cont) return;
+    }
+
+    const btn = el('btn-summary');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Generating…';
+
     const templateKey = el('template').value;
     const prompts = {
-      technical_rfi: "You are a Project Engineer. Based on the transcript, draft a Technical RFI (Request for Information). Include a clear Problem Statement, Proposed Solution (if any), and Required Information. Format as Markdown.",
-      submittal_variance: "You are a Project Engineer. Based on the transcript, draft a Submittal Variance. Detail the original specification, the proposed variance, and the justification. Format as Markdown.",
-      mop_work_plan: "You are a Project Engineer. Based on the transcript, draft a Method of Procedure (MOP) or Work Plan. Include Objectives, Prerequisites, Step-by-Step Procedure, and Safety considerations. Format as Markdown.",
-      differing_site_condition: "You are a Project Engineer. Based on the transcript, draft a Differing Site Condition (Change Order Request). Describe the expected condition vs actual condition, impact on schedule, and impact on cost. Format as Markdown.",
-      meeting_action_items: "You are a Project Engineer. Based on the meeting transcript, extract all action items, design decisions, and assignees. Format as a clear, concise Markdown list."
+      meeting_action_items:
+        'You are a project engineer supporting water/wastewater infrastructure work. ' +
+        'From the meeting transcript, extract action items, decisions, open questions, and assignees when stated. ' +
+        'Use clear Markdown with sections: ## Decisions, ## Action Items (bullets with Owner — Action — Due if known), ## Open Questions. ' +
+        'Be concise and faithful to the transcript; do not invent facts.',
+      general:
+        'You are an editor for construction field notes. Lightly clean up and format the conversation transcript for readability. ' +
+        'Fix obvious ASR glitches only when context is clear, improve paragraphing, keep technical terms and numbers, ' +
+        'and preserve meaning. Output polished Markdown (short title + body). Do not invent content.'
     };
-    
+
     try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: 'llama-3.3-70b-versatile',
           messages: [
-            { role: "system", content: prompts[templateKey] },
-            { role: "user", content: `Transcript:\n${transcript}` }
+            { role: 'system', content: prompts[templateKey] || prompts.general },
+            {
+              role: 'user',
+              content:
+                'Meeting title: ' + (el('meeting-title').value.trim() || '(untitled)') + '\n' +
+                'Transcript version: ' + transcriptState.version + '\n\n' +
+                'Transcript:\n' + transcript
+            }
           ]
         })
       });
-      
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       const resultText = data.choices[0].message.content;
-      
+      transcriptState.summaryMarkdown = resultText;
+      transcriptState.summaryMode = templateKey;
       el('output-card').classList.remove('hidden');
       el('output').innerHTML = marked.parse(resultText);
       el('output').dataset.rawMarkdown = resultText;
-      
+      el('output-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (e) {
       console.error(e);
       alert('Error generating summary: ' + e.message);
     } finally {
-      el('btn-summary').innerHTML = '<i class="ti ti-sparkles"></i> Generate Summary';
-      el('btn-summary').disabled = false;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-sparkles"></i> Generate Summary';
     }
-  }
+  };
 
-  function copyOutput() {
+  window.copyOutput = function () {
     const md = el('output').dataset.rawMarkdown;
-    if (md) {
-      navigator.clipboard.writeText(md).then(() => {
-        alert('Copied to clipboard!');
-      }).catch(err => alert('Failed to copy: ' + err));
+    if (!md) return;
+    navigator.clipboard.writeText(md).then(
+      () => alert('Copied to clipboard.'),
+      err => alert('Failed to copy: ' + err)
+    );
+  };
+
+  // ── Professional export (project-record package) ──────────────────────
+  /**
+   * Builds a meeting record with metadata + summary + full transcript.
+   * - doc: Word-compatible HTML (.doc) — opens cleanly in Word / Google Docs
+   * - pdf: print-ready window (user chooses Save as PDF)
+   */
+  window.exportProfessional = function (format) {
+    if (!transcriptState.segments.length && !transcriptState.summaryMarkdown) {
+      alert('Nothing to export yet. Generate a transcript and/or summary first.');
+      return;
     }
-  }
+    const title = el('meeting-title').value.trim() || 'SiteScribe Meeting Record';
+    const modeLabel = transcriptState.summaryMode === 'meeting_action_items'
+      ? 'Meeting Action Items'
+      : transcriptState.summaryMode === 'general'
+        ? 'General'
+        : '(none)';
+    const meta = {
+      title,
+      recorded: transcriptState.meetingStartedAt
+        ? transcriptState.meetingStartedAt.toLocaleString()
+        : new Date().toLocaleString(),
+      duration: fmtTime(transcriptState.durationSec || elapsedSec),
+      txVersion: transcriptState.version + (transcriptState.userEdited ? ' (user-edited)' : ''),
+      summaryMode: modeLabel
+    };
+
+    const transcriptHtml = transcriptState.segments.map(s => {
+      const sp = escapeHtml(transcriptState.speakers[s.speakerId] || s.speakerId);
+      return `<p style="margin:0 0 10px 0;"><strong>[${fmtTime(s.start)}] ${sp}:</strong> ${escapeHtml(s.text)}</p>`;
+    }).join('');
+
+    const summaryHtml = transcriptState.summaryMarkdown
+      ? marked.parse(transcriptState.summaryMarkdown)
+      : '<p><em>No summary generated.</em></p>';
+
+    const docHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(meta.title)}</title>
+<style>
+  body { font-family: Calibri, Arial, sans-serif; color: #111; max-width: 800px; margin: 40px auto; padding: 0 24px; line-height: 1.45; }
+  h1 { font-size: 22pt; margin-bottom: 6px; }
+  h2 { font-size: 14pt; margin-top: 28px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  .meta { color: #444; font-size: 11pt; margin-bottom: 24px; }
+  .meta div { margin: 2px 0; }
+  .footer { margin-top: 36px; font-size: 9pt; color: #666; border-top: 1px solid #ddd; padding-top: 10px; }
+  @media print { body { margin: 0; } }
+</style>
+</head>
+<body>
+  <h1>${escapeHtml(meta.title)}</h1>
+  <div class="meta">
+    <div><strong>Recorded:</strong> ${escapeHtml(meta.recorded)}</div>
+    <div><strong>Duration:</strong> ${escapeHtml(meta.duration)}</div>
+    <div><strong>Transcript version:</strong> ${escapeHtml(meta.txVersion)}</div>
+    <div><strong>Summary mode:</strong> ${escapeHtml(meta.summaryMode)}</div>
+    <div><strong>Generated by:</strong> SiteScribe</div>
+  </div>
+  <h2>Summary / Action Items</h2>
+  ${summaryHtml}
+  <h2>Full Transcript</h2>
+  ${transcriptHtml || '<p><em>No transcript segments.</em></p>'}
+  <div class="footer">Project documentation export from SiteScribe. Verify technical values against source audio before relying on this record for contractual use.</div>
+</body>
+</html>`;
+
+    if (format === 'pdf') {
+      const w = window.open('', '_blank');
+      if (!w) {
+        alert('Pop-up blocked. Allow pop-ups to export PDF, or use Export DOCX.');
+        return;
+      }
+      w.document.open();
+      w.document.write(docHtml);
+      w.document.close();
+      // Give the browser a tick to layout before print
+      setTimeout(() => {
+        w.focus();
+        w.print();
+      }, 300);
+      return;
+    }
+
+    // Word-compatible HTML package (.doc) — opens in Word / Google Docs / LibreOffice
+    // without a bundler or heavy DOCX library (keeps SiteScribe single-file).
+    const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sitescribe-record-${tsFile()}.doc`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  el('mode-pill').innerHTML = isDesktop
+    ? '<i class="ti ti-device-desktop"></i> Tab + mic mix'
+    : '<i class="ti ti-device-mobile"></i> Microphone';
+
+  if (isDesktop) el('how-desk').classList.remove('hidden');
+  else el('how-mob').classList.remove('hidden');
+
+  renderTranscript();
+
+  // Re-acquire wake lock if tab becomes visible again during recording
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && rec && rec.state === 'recording') {
+      await acquireWakeLock();
+    }
+  });
+})();
 </script>
 </body>
 </html>
