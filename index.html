@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SiteScribe</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
@@ -108,7 +107,32 @@
     50% { opacity: 0.45; }
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .spin { display: inline-block; animation: spin 0.9s linear infinite; }
+  .spin { display: inline-block; animation: spin 0.9s linear infinite; transform-origin: center; }
+
+  /*
+   * Vendored Tabler outline icons (inline SVG sprite).
+   * Sized like the previous .ti webfont so layout/appearance stay the same.
+   */
+  .icon {
+    width: 1.125em;
+    height: 1.125em;
+    display: inline-block;
+    vertical-align: -0.2em;
+    flex-shrink: 0;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  /* Symbols inherit stroke from the referencing .icon via CSS on the host svg */
+  .icon use { pointer-events: none; }
+  .icon-btn .icon { width: 1.25rem; height: 1.25rem; vertical-align: 0; }
+  .brand .icon { width: 1.25rem; height: 1.25rem; }
+  .title .icon { width: 1.1rem; height: 1.1rem; }
+  .tx-status .icon { width: 1.15rem; height: 1.15rem; margin-top: 1px; flex-shrink: 0; }
+  .mode-pill .icon { width: 0.95rem; height: 0.95rem; }
+
 
   audio { width: 100%; display: block; margin: 8px 0 12px; }
   .audio-note { font-size: 12px; color: var(--tx3); margin: 0 0 12px; }
@@ -231,20 +255,52 @@
 </head>
 <body>
 
+<!--
+  Offline icons: Tabler Icons outline paths (MIT) vendored as an inline SVG sprite.
+  Only the icons SiteScribe uses are included -- no CDN webfont, works fully offline.
+  Usage in markup: <svg class="icon" aria-hidden="true"><use href="#ti-NAME"></use></svg>
+  Usage in JS:     icon('NAME') or icon('NAME', 'spin')
+-->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true" id="icon-sprite">
+  <symbol id="ti-microphone-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12.9a5 5 0 1 0 -3.902 -3.9" /><path d="M15 12.9l-3.902 -3.899l-7.513 8.584a2 2 0 1 0 2.827 2.83l8.588 -7.515z" /></symbol>
+  <symbol id="ti-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z" /><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" /></symbol>
+  <symbol id="ti-capture" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8v-2a2 2 0 0 1 2 -2h2" /><path d="M4 16v2a2 2 0 0 0 2 2h2" /><path d="M16 4h2a2 2 0 0 1 2 2v2" /><path d="M16 20h2a2 2 0 0 0 2 -2v-2" /><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" /></symbol>
+  <symbol id="ti-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /></symbol>
+  <symbol id="ti-player-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z" /></symbol>
+  <symbol id="ti-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" /><path d="M7 11l5 5l5 -5" /><path d="M12 4l0 12" /></symbol>
+  <symbol id="ti-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></symbol>
+  <symbol id="ti-align-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l16 0" /><path d="M4 12l10 0" /><path d="M4 18l14 0" /></symbol>
+  <symbol id="ti-info-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 9h.01" /><path d="M11 12h1v4h1" /></symbol>
+  <symbol id="ti-file-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /><path d="M9 9l1 0" /><path d="M9 13l6 0" /><path d="M9 17l6 0" /></symbol>
+  <symbol id="ti-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11" /></symbol>
+  <symbol id="ti-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21l15 -15l-3 -3l-15 15l3 3" /><path d="M15 6l3 3" /><path d="M9 3a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" /><path d="M19 13a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" /></symbol>
+  <symbol id="ti-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z" /></symbol>
+  <symbol id="ti-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z" /><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" /></symbol>
+  <symbol id="ti-file-description" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z" /><path d="M9 17h6" /><path d="M9 13h6" /></symbol>
+  <symbol id="ti-printer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2" /><path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4" /><path d="M7 13m0 2a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2z" /></symbol>
+  <symbol id="ti-loader-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9" /></symbol>
+  <symbol id="ti-circle-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" /><path d="M9 12l2 2l4 -4" /></symbol>
+  <symbol id="ti-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" /><path d="M12 16h.01" /></symbol>
+  <symbol id="ti-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 8v4" /><path d="M12 16h.01" /></symbol>
+  <symbol id="ti-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" /></symbol>
+  <symbol id="ti-device-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-10z" /><path d="M7 20h10" /><path d="M9 16v4" /><path d="M15 16v4" /></symbol>
+  <symbol id="ti-device-mobile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z" /><path d="M11 4h2" /><path d="M12 17v.01" /></symbol>
+</svg>
+
 <div class="app">
   <div class="header">
-    <div class="brand"><i class="ti ti-microphone-2"></i> SiteScribe</div>
+    <div class="brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-microphone-2"></use></svg> SiteScribe</div>
     <div class="header-right">
       <span class="mode-pill" id="mode-pill"></span>
       <button class="icon-btn" onclick="toggleModal(true)" title="Settings" aria-label="Settings">
-        <i class="ti ti-settings"></i>
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-settings"></use></svg>
       </button>
     </div>
   </div>
 
   <!-- ── Capture ───────────────────────────────────────────────────── -->
   <div class="card">
-    <div class="title"><i class="ti ti-capture"></i> Capture Audio</div>
+    <div class="title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-capture"></use></svg> Capture Audio</div>
 
     <label class="field-label" for="meeting-title">Meeting / project title (optional)</label>
     <input type="text" id="meeting-title" placeholder="e.g. WWTP Phase 2 — Pre-con with GC">
@@ -274,10 +330,10 @@
 
     <div class="btn-row" id="rec-btns">
       <button class="btn" id="btn-start" onclick="startRecording()">
-        <i class="ti ti-circle"></i> Start Recording
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-circle"></use></svg> Start Recording
       </button>
       <button class="btn btn-red hidden" id="btn-stop" onclick="stopRecording()">
-        <i class="ti ti-player-stop"></i> Stop Recording
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-player-stop"></use></svg> Stop Recording
       </button>
     </div>
 
@@ -285,8 +341,8 @@
       <audio id="player" controls></audio>
       <p id="audio-note" class="audio-note"></p>
       <div class="btn-row">
-        <button class="btn btn-sm" onclick="downloadAudio()"><i class="ti ti-download"></i> Download audio</button>
-        <button class="btn btn-sm" onclick="newRecording()"><i class="ti ti-refresh"></i> New recording</button>
+        <button class="btn btn-sm" onclick="downloadAudio()"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-download"></use></svg> Download audio</button>
+        <button class="btn btn-sm" onclick="newRecording()"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-refresh"></use></svg> New recording</button>
       </div>
     </div>
   </div>
@@ -294,13 +350,13 @@
   <!-- ── Transcript ────────────────────────────────────────────────── -->
   <div class="card" id="transcript-card">
     <div class="title-row">
-      <div class="title" style="margin:0;"><i class="ti ti-align-left"></i> Transcript</div>
+      <div class="title" style="margin:0;"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-align-left"></use></svg> Transcript</div>
       <span class="badge badge-idle" id="tx-version-badge">No transcript</span>
     </div>
 
     <!-- Status line for draft vs final processing -->
     <div class="tx-status" id="tx-status">
-      <i class="ti ti-info-circle"></i>
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-info-circle"></use></svg>
       <span id="tx-status-text">Record a meeting to generate a transcript. Turn on near-live draft in Settings for progressive updates during long sessions.</span>
     </div>
 
@@ -312,17 +368,17 @@
 
     <div class="btn-row">
       <button class="btn btn-sm" id="btn-dl-tx" onclick="downloadTranscript()" disabled>
-        <i class="ti ti-file-text"></i> Download transcript
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-file-text"></use></svg> Download transcript
       </button>
       <button class="btn btn-sm" id="btn-final-tx" onclick="runFinalTranscription()" disabled>
-        <i class="ti ti-bolt"></i> Run final transcription
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-bolt"></use></svg> Run final transcription
       </button>
     </div>
   </div>
 
   <!-- ── Summarization ─────────────────────────────────────────────── -->
   <div class="card">
-    <div class="title"><i class="ti ti-wand"></i> Summarization</div>
+    <div class="title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-wand"></use></svg> Summarization</div>
     <p class="hint">Uses the <strong>final</strong> high-accuracy transcript when available (including your edits). Falls back to the draft only if no final exists yet.</p>
     <label class="field-label" for="template">Mode</label>
     <select id="template">
@@ -330,18 +386,18 @@
       <option value="general">General (cleanup &amp; formatting)</option>
     </select>
     <button class="btn btn-primary" id="btn-summary" onclick="generateSummary()">
-      <i class="ti ti-sparkles"></i> Generate Summary
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-sparkles"></use></svg> Generate Summary
     </button>
   </div>
 
   <!-- ── Output ────────────────────────────────────────────────────── -->
   <div class="card hidden" id="output-card">
-    <div class="title"><i class="ti ti-file-text"></i> Output</div>
+    <div class="title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-file-text"></use></svg> Output</div>
     <div id="output" class="output"></div>
     <div class="btn-row">
-      <button class="btn btn-sm" onclick="copyOutput()"><i class="ti ti-copy"></i> Copy</button>
-      <button class="btn btn-sm" onclick="exportProfessional('doc')"><i class="ti ti-file-description"></i> Export Word</button>
-      <button class="btn btn-sm" onclick="exportProfessional('pdf')"><i class="ti ti-printer"></i> Export PDF</button>
+      <button class="btn btn-sm" onclick="copyOutput()"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-copy"></use></svg> Copy</button>
+      <button class="btn btn-sm" onclick="exportProfessional('doc')"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-file-description"></use></svg> Export Word</button>
+      <button class="btn btn-sm" onclick="exportProfessional('pdf')"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-printer"></use></svg> Export PDF</button>
     </div>
   </div>
 
@@ -354,7 +410,7 @@
 <!-- Settings modal -->
 <div class="modal-overlay" id="settings-modal">
   <div class="modal">
-    <div class="title"><i class="ti ti-settings"></i> Settings</div>
+    <div class="title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-settings"></use></svg> Settings</div>
 
     <label class="field-label" for="api-key">Groq API Key</label>
     <input type="password" id="api-key" placeholder="gsk_..." autocomplete="off">
@@ -398,13 +454,27 @@
  * transcriptState.phase: idle | draft_updating | final_processing | ready | error
  * User text/speaker edits set userEdited=true. Final replace asks first if edited.
  *
- * TRANSCRIPTION LAYER (pluggable)
+ * ICONS (offline)
+ * --------------
+ * Tabler outline icons are vendored as an inline SVG <symbol> sprite (no CDN).
+ * HTML uses <svg class="icon"><use href="#ti-name"></use></svg>; JS uses icon(name).
+ * * TRANSCRIPTION LAYER (pluggable)
  * --------------------------------
  * All ASR goes through TranscriptionBackend.swap implementation if needed
  * (e.g. different batch vs streaming endpoints). UI only consumes segments.
  */
 (function () {
   'use strict';
+
+  /**
+   * Render a vendored Tabler icon from the inline SVG sprite (#icon-sprite).
+   * @param {string} name  Icon id without "ti-" prefix (e.g. "settings", "loader-2")
+   * @param {string} [cls] Extra classes (e.g. "spin")
+   */
+  function icon(name, cls) {
+    const c = cls ? ('icon ' + cls) : 'icon';
+    return '<svg class="' + c + '" aria-hidden="true" focusable="false"><use href="#ti-' + name + '"></use></svg>';
+  }
 
   const el = id => document.getElementById(id);
   const DRAFT_INTERVAL_MS = 25000; // near-live lag target (~25s)
@@ -532,16 +602,18 @@
 
   function setTxStatus(kind, text) {
     const box = el('tx-status');
-    const icon = box.querySelector('i');
     box.className = 'tx-status' + (kind ? ' ' + kind : '');
-    const icons = {
-      busy: 'ti ti-loader-2 spin',
-      ok: 'ti ti-circle-check',
-      warn: 'ti ti-alert-triangle',
-      err: 'ti ti-alert-circle',
-      '': 'ti ti-info-circle'
+    const names = {
+      busy: 'loader-2',
+      ok: 'circle-check',
+      warn: 'alert-triangle',
+      err: 'alert-circle',
+      '': 'info-circle'
     };
-    icon.className = icons[kind] || icons[''];
+    const name = names[kind] || names[''];
+    const spin = kind === 'busy' ? 'spin' : '';
+    const prev = box.querySelector('.icon');
+    if (prev) prev.outerHTML = icon(name, spin);
     el('tx-status-text').textContent = text;
   }
 
@@ -646,7 +718,7 @@
         <span class="speaker-dot" style="background:${color}"></span>
         <span>${escapeHtml(name)}</span>
         <button type="button" onclick="renameSpeaker('${id}')" aria-label="Rename ${escapeHtml(name)}">
-          <i class="ti ti-pencil"></i>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-pencil"></use></svg>
         </button>
       </span>`;
     }).join('');
@@ -1104,7 +1176,7 @@
 
     const btn = el('btn-summary');
     btn.disabled = true;
-    btn.innerHTML = '<i class="ti ti-loader-2 spin"></i> Generating…';
+    btn.innerHTML = icon('loader-2', 'spin') + ' Generating…';
 
     const templateKey = el('template').value;
     const prompts = {
@@ -1154,7 +1226,7 @@
       alert('Error generating summary: ' + e.message);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-sparkles"></i> Generate Summary';
+      btn.innerHTML = icon('sparkles') + ' Generate Summary';
     }
   };
 
@@ -1264,8 +1336,8 @@
 
   // ── Init ──────────────────────────────────────────────────────────────
   el('mode-pill').innerHTML = isDesktop
-    ? '<i class="ti ti-device-desktop"></i> Tab + mic mix'
-    : '<i class="ti ti-device-mobile"></i> Microphone';
+    ? icon('device-desktop') + ' Tab + mic mix'
+    : icon('device-mobile') + ' Microphone';
 
   if (isDesktop) el('how-desk').classList.remove('hidden');
   else el('how-mob').classList.remove('hidden');
