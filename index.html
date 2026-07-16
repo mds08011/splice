@@ -159,9 +159,21 @@
   .tx-status.warn { border-color: rgba(255, 215, 64, 0.3); color: var(--amb); }
   .tx-status.err { border-color: rgba(255, 82, 82, 0.35); color: var(--red); }
 
-  /* Speaker legend */
+  /*
+   * Speaker legend (FINAL only)
+   * Completely hidden during DRAFT — speaker detection is incomplete until final,
+   * so labels/dots/rename controls only appear on the high-accuracy transcript.
+   */
   .speaker-bar {
     display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+  }
+  /* Smooth re-introduction when final transcript replaces draft */
+  .speaker-bar.speakers-enter {
+    animation: speakers-fade-in 0.35s ease both;
+  }
+  @keyframes speakers-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   .speaker-chip {
     display: inline-flex; align-items: center; gap: 6px;
@@ -177,7 +189,7 @@
   }
   .speaker-chip button:hover { color: var(--blu); }
 
-  /* Transcript segments */
+  /* Transcript segments — base (FINAL comfortable spacing) */
   .segments {
     background: var(--bg); border: 1px solid var(--bd); border-radius: var(--r);
     max-height: 420px; overflow-y: auto; margin-bottom: 12px;
@@ -195,10 +207,16 @@
   .seg-time {
     font-size: 12px; font-variant-numeric: tabular-nums; color: var(--blu);
     cursor: pointer; padding: 2px 0; font-weight: 600; user-select: none;
+    /* Keep touch-friendly min hit area even in compact draft */
+    min-height: 28px; display: flex; align-items: center;
   }
   .seg-time:hover { text-decoration: underline; }
   .seg-meta {
     display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
+  }
+  /* Final-only: fade speaker controls in once when draft → final (not on rename re-renders) */
+  .segments.speakers-just-revealed .seg.seg-final .seg-meta {
+    animation: speakers-fade-in 0.3s ease both;
   }
   .seg-speaker {
     font-size: 12px; font-weight: 600; border: none; background: transparent;
@@ -210,8 +228,9 @@
     border: 1px solid var(--bd); border-radius: 4px; padding: 2px 6px;
     color: var(--tx2); cursor: pointer;
   }
+  /* Override global `textarea { height: 120px }` — segment rows must stay dense */
   .seg-text {
-    width: 100%; min-height: 44px; background: transparent; color: var(--tx);
+    width: 100%; height: auto; min-height: 44px; background: transparent; color: var(--tx);
     border: 1px solid transparent; border-radius: 6px; padding: 6px 8px;
     font-family: inherit; font-size: 14px; line-height: 1.45; resize: vertical;
     margin: 0;
@@ -222,6 +241,51 @@
   .seg.empty-msg {
     display: block; padding: 28px 16px; text-align: center;
     color: var(--tx3); font-size: 14px; grid-template-columns: 1fr;
+  }
+
+  /*
+   * DRAFT compact layout (text-only, no speakers)
+   * ---------------------------------------------
+   * Driven by .segments.is-draft on the host + .seg-compact on each row.
+   * Speaker labels, colored dots, rename buttons, and reassign dropdowns
+   * are not rendered at all (see renderTranscript). Only timestamp + text.
+   * Short utterances sit close together for a scannable conversation log.
+   */
+  .segments.is-draft {
+    /* Slightly taller scroll area — more lines fit per viewport in compact mode */
+    max-height: 480px;
+  }
+  .seg.seg-compact {
+    grid-template-columns: 52px 1fr;
+    gap: 0 8px;
+    padding: 2px 10px;
+    align-items: baseline;
+    border-bottom-color: rgba(51, 51, 51, 0.55);
+  }
+  .seg.seg-compact:hover { background: rgba(255,255,255,0.025); }
+  .seg.seg-compact .seg-time {
+    font-size: 11px;
+    min-height: 26px;
+    padding: 4px 0;
+    align-self: start;
+  }
+  .seg.seg-compact .seg-body {
+    min-width: 0; /* allow text to shrink in grid */
+  }
+  .seg.seg-compact .seg-text {
+    height: auto;           /* defeat global textarea height: 120px */
+    min-height: 26px;
+    padding: 3px 4px;
+    font-size: 13.5px;
+    line-height: 1.35;
+    border-radius: 4px;
+    /* Single-line-ish feel; still editable; auto-grown via fitSegTextarea() */
+    resize: none;
+    overflow: hidden;
+  }
+  /* Final comfortable spacing (explicit class for transition + clarity) */
+  .segments.is-final .seg.seg-final {
+    padding: 10px 12px;
   }
 
   .toggle-row {
@@ -523,6 +587,14 @@
  * transcriptState.phase: idle | draft_updating | final_processing | ready | error
  * User text/speaker edits set userEdited=true. Final replace asks first if edited.
  * Badge + status line always show which version and processing stage is active.
+ *
+ * TRANSCRIPT DENSITY / SPEAKER UI
+ * -------------------------------
+ * DRAFT: compact text-only rows (timestamp + text). Speaker bar, colored labels,
+ *   rename, and reassign controls are completely hidden — speaker detection is
+ *   incomplete until the final pass; users name speakers only on final.
+ * FINAL: full speaker UI + comfortable spacing for review/edit.
+ * Transition: when final replaces draft, speaker-bar / seg-meta fade in via CSS.
  *
  * DRAFT FREQUENCY (Settings → "Draft update frequency")
  * ----------------------------------------------------
@@ -1183,11 +1255,34 @@
     renderTranscript();
   }
 
+  // Tracks last rendered version so speaker chrome only animates on draft → final
+  let lastRenderedTxVersion = 'none';
+
+  /**
+   * Render on-screen transcript.
+   *
+   * DRAFT (version === 'draft'):
+   *   - Speaker UI completely hidden (no legend, labels, dots, rename, reassign)
+   *   - Compact rows: timestamp + spoken text only, tight vertical spacing
+   *   - DRAFT badge stays via updateVersionBadge()
+   *
+   * FINAL (version === 'final'):
+   *   - Full speaker legend + per-segment rename / reassign controls
+   *   - Comfortable padding for review and editing
+   *   - CSS fade-in introduces speaker chrome once when draft is replaced
+   *
+   * Does not change transcription / hybrid backend logic — layout only.
+   */
   function renderTranscript() {
     updateVersionBadge();
     const host = el('segments');
     const bar = el('speaker-bar');
     const hasSegs = transcriptState.segments.length > 0;
+    // Speakers only on final high-accuracy transcript (user decision: name sparingly there)
+    const isFinal = transcriptState.version === 'final';
+    const isDraft = transcriptState.version === 'draft';
+    // Animate speaker UI only when first revealing final (not on rename re-renders)
+    const revealingSpeakers = isFinal && lastRenderedTxVersion !== 'final';
 
     el('btn-dl-tx').disabled = !hasSegs;
     // Allow manual final re-run when we have audio and aren't already processing
@@ -1197,38 +1292,71 @@
     el('btn-export-doc').disabled = !canExport;
     el('btn-export-pdf').disabled = !canExport;
 
+    // Density mode classes on the scroll host
+    host.classList.toggle('is-draft', isDraft);
+    host.classList.toggle('is-final', isFinal);
+    host.classList.toggle('speakers-just-revealed', revealingSpeakers);
+
     if (!hasSegs) {
       host.innerHTML = '<div class="seg empty-msg">No transcript yet</div>';
       bar.classList.add('hidden');
+      bar.classList.remove('speakers-enter');
       bar.innerHTML = '';
+      lastRenderedTxVersion = transcriptState.version;
       return;
     }
 
-    // Speaker legend with rename
-    bar.classList.remove('hidden');
-    bar.innerHTML = Object.keys(transcriptState.speakers).sort().map((id, i) => {
-      const color = SPEAKER_COLORS[(Number(id) - 1) % SPEAKER_COLORS.length] || SPEAKER_COLORS[i % SPEAKER_COLORS.length];
-      const name = transcriptState.speakers[id];
-      return `<span class="speaker-chip" title="Click pencil to rename">
-        <span class="speaker-dot" style="background:${color}"></span>
-        <span>${escapeHtml(name)}</span>
-        <button type="button" onclick="renameSpeaker('${id}')" aria-label="Rename ${escapeHtml(name)}">
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-pencil"></use></svg>
-        </button>
-      </span>`;
-    }).join('');
+    // ── Speaker legend: FINAL only (completely hidden during DRAFT) ─────
+    if (isFinal) {
+      bar.classList.remove('hidden');
+      bar.classList.toggle('speakers-enter', revealingSpeakers);
+      bar.innerHTML = Object.keys(transcriptState.speakers).sort().map((id, i) => {
+        const color = SPEAKER_COLORS[(Number(id) - 1) % SPEAKER_COLORS.length] || SPEAKER_COLORS[i % SPEAKER_COLORS.length];
+        const name = transcriptState.speakers[id];
+        return `<span class="speaker-chip" title="Click pencil to rename">
+          <span class="speaker-dot" style="background:${color}"></span>
+          <span>${escapeHtml(name)}</span>
+          <button type="button" onclick="renameSpeaker('${id}')" aria-label="Rename ${escapeHtml(name)}">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-pencil"></use></svg>
+          </button>
+        </span>`;
+      }).join('');
+    } else {
+      // DRAFT (or other non-final): no speaker chrome at all
+      bar.classList.add('hidden');
+      bar.classList.remove('speakers-enter');
+      bar.innerHTML = '';
+    }
 
-    const speakerIds = Object.keys(transcriptState.speakers).sort((a, b) => Number(a) - Number(b));
+    const speakerIds = isFinal
+      ? Object.keys(transcriptState.speakers).sort((a, b) => Number(a) - Number(b))
+      : [];
 
+    // ── Segment rows: compact text-only (draft) vs full speaker UI (final) ─
     host.innerHTML = transcriptState.segments.map(seg => {
+      const t = fmtTime(seg.start);
+      const seek = Number(seg.start) || 0;
+
+      if (isDraft || !isFinal) {
+        // Compact: timestamp + editable text only (no speaker header / dropdown)
+        return `<div class="seg seg-compact" data-id="${seg.id}">
+          <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
+          <div class="seg-body">
+            <textarea class="seg-text" rows="1" oninput="editSegmentText('${seg.id}', this.value, this)"
+              aria-label="Editable draft transcript segment at ${t}">${escapeHtml(seg.text)}</textarea>
+          </div>
+        </div>`;
+      }
+
+      // Final: comfortable layout with colored speaker label + reassign
       const color = SPEAKER_COLORS[(Number(seg.speakerId) - 1) % SPEAKER_COLORS.length];
       const name = transcriptState.speakers[seg.speakerId] || `Speaker ${seg.speakerId}`;
       const speakerOpts = speakerIds.map(id =>
         `<option value="${id}"${id === seg.speakerId ? ' selected' : ''}>${escapeHtml(transcriptState.speakers[id])}</option>`
       ).join('') + `<option value="__new__">+ New speaker</option>`;
-      return `<div class="seg" data-id="${seg.id}">
-        <div class="seg-time" onclick="seekTo(${Number(seg.start) || 0})" title="Seek audio to ${fmtTime(seg.start)}">${fmtTime(seg.start)}</div>
-        <div>
+      return `<div class="seg seg-final" data-id="${seg.id}">
+        <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
+        <div class="seg-body">
           <div class="seg-meta">
             <button type="button" class="seg-speaker" style="color:${color}" onclick="renameSpeaker('${seg.speakerId}')" title="Rename speaker">
               ${escapeHtml(name)}
@@ -1237,11 +1365,26 @@
               ${speakerOpts}
             </select>
           </div>
-          <textarea class="seg-text" rows="2" oninput="editSegmentText('${seg.id}', this.value)"
-            aria-label="Editable transcript segment">${escapeHtml(seg.text)}</textarea>
+          <textarea class="seg-text" rows="2" oninput="editSegmentText('${seg.id}', this.value, this)"
+            aria-label="Editable transcript segment, ${escapeHtml(name)}">${escapeHtml(seg.text)}</textarea>
         </div>
       </div>`;
     }).join('');
+
+    // Draft compact: auto-grow textareas so multi-line segments aren't clipped,
+    // while short utterances stay single-line height (dense conversation log).
+    if (isDraft || !isFinal) {
+      host.querySelectorAll('.seg-compact .seg-text').forEach(fitSegTextarea);
+    }
+
+    lastRenderedTxVersion = transcriptState.version;
+  }
+
+  /** Keep compact draft textareas snug to content (min height still from CSS). */
+  function fitSegTextarea(ta) {
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(26, ta.scrollHeight) + 'px';
   }
 
   function escapeHtml(str) {
@@ -1253,12 +1396,16 @@
   }
 
   // ── Segment / speaker mutations (global for inline handlers) ──────────
-  window.editSegmentText = function (id, text) {
+  window.editSegmentText = function (id, text, textareaEl) {
     const seg = transcriptState.segments.find(s => s.id === id);
     if (!seg) return;
     seg.text = text;
     transcriptState.userEdited = true;
     updateVersionBadge();
+    // Grow compact draft row as the user types (final rows use CSS min-height)
+    if (transcriptState.version === 'draft' && textareaEl) {
+      fitSegTextarea(textareaEl);
+    }
   };
 
   window.renameSpeaker = function (speakerId) {
