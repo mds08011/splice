@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SiteScribe</title>
+<title>Splice</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
@@ -257,7 +257,7 @@
 
 <!--
   Offline icons: Tabler Icons outline paths (MIT) vendored as an inline SVG sprite.
-  Only the icons SiteScribe uses are included -- no CDN webfont, works fully offline.
+  Only the icons Splice uses are included -- no CDN webfont, works fully offline.
   Usage in markup: <svg class="icon" aria-hidden="true"><use href="#ti-NAME"></use></svg>
   Usage in JS:     icon('NAME') or icon('NAME', 'spin')
 -->
@@ -289,7 +289,7 @@
 
 <div class="app">
   <div class="header">
-    <div class="brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-microphone-2"></use></svg> SiteScribe</div>
+    <div class="brand"><svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-microphone-2"></use></svg> Splice</div>
     <div class="header-right">
       <span class="mode-pill" id="mode-pill"></span>
       <button class="icon-btn" onclick="toggleModal(true)" title="Settings" aria-label="Settings">
@@ -357,7 +357,7 @@
     <!-- Status line for draft vs final processing -->
     <div class="tx-status" id="tx-status">
       <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-info-circle"></use></svg>
-      <span id="tx-status-text">Record a meeting to generate a transcript. Turn on near-live draft in Settings for progressive updates during long sessions.</span>
+      <span id="tx-status-text">Record a meeting to generate a transcript. Optional draft updates (Settings → Draft update frequency) give progressive updates on long sessions; final batch always runs on stop.</span>
     </div>
 
     <div id="speaker-bar" class="speaker-bar hidden"></div>
@@ -372,6 +372,15 @@
       </button>
       <button class="btn btn-sm" id="btn-final-tx" onclick="runFinalTranscription()" disabled>
         <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-bolt"></use></svg> Run final transcription
+      </button>
+    </div>
+    <!-- Professional package export uses final (or current) transcript + summary when present -->
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-sm" id="btn-export-doc" onclick="exportProfessional('doc')" disabled>
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-file-description"></use></svg> Export Word
+      </button>
+      <button class="btn btn-sm" id="btn-export-pdf" onclick="exportProfessional('pdf')" disabled>
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-printer"></use></svg> Export PDF
       </button>
     </div>
   </div>
@@ -402,8 +411,8 @@
   </div>
 
   <footer>
-    Privacy-first field recorder for water/wastewater project meetings<br>
-    Audio is processed only via your configured API key · Icons require network
+    Splice — privacy-first field recorder for water/wastewater project meetings<br>
+    Audio stays local until you transcribe with your API key · Icons work offline
   </footer>
 </div>
 
@@ -417,16 +426,21 @@
     <p class="hint">Used for Whisper transcription and LLM summarization. Stored only in this browser (localStorage).</p>
 
     <!--
-      Near-live (chunked) draft is OPTIONAL. When off, SiteScribe keeps the
-      original simple flow: record fully, then one high-accuracy batch pass.
+      Draft / chunked transcription is OPTIONAL and Off by default.
+      Longer intervals (60s / 2m / 3m) reduce Groq rate-limit pressure.
+      After stop, a full high-accuracy batch pass always replaces the draft.
     -->
-    <div class="toggle-row">
-      <input type="checkbox" id="near-live-toggle">
-      <label for="near-live-toggle">
-        Near-live draft transcript
-        <span class="sub">While recording, periodically transcribe audio so far (short lag). After stop, a full high-accuracy pass still replaces the draft. Off = simpler post-meeting-only flow.</span>
-      </label>
-    </div>
+    <label class="field-label" for="draft-frequency">Draft update frequency</label>
+    <select id="draft-frequency">
+      <option value="0">Off (default)</option>
+      <option value="60">Every 60 seconds</option>
+      <option value="120">Every 2 minutes</option>
+      <option value="180">Every 3 minutes</option>
+    </select>
+    <p class="hint">
+      Near-live draft is optional for long meetings. When Off, Splice records fully then runs one high-accuracy batch transcription.
+      When enabled, progressive drafts appear at the chosen interval; the final batch still runs when you stop and becomes the source of truth.
+    </p>
 
     <div class="btn-row">
       <button class="btn" onclick="toggleModal(false)">Cancel</button>
@@ -437,30 +451,44 @@
 
 <script>
 /**
- * SiteScribe — privacy-first meeting recorder for infrastructure field teams.
+ * Splice — privacy-first meeting recorder for infrastructure field teams.
+ *
+ * PRODUCT NAME
+ * ------------
+ * The product is consistently called "Splice" (UI, downloads, exports, comments).
  *
  * HYBRID TRANSCRIPTION FLOW
  * -------------------------
  * 1. Recording accumulates MediaRecorder chunks in memory (1s timeslice).
- * 2. Optional near-live mode: every DRAFT_INTERVAL_MS, send the full audio
- *    blob so far to Whisper (text mode) → populate draft segments.
- * 3. On stop: always run a FINAL batch pass with verbose_json + segment
- *    timestamps → replaces draft (unless user confirms keep edits).
- * 4. Summarization / downloads / exports prefer final over draft.
+ * 2. Optional DRAFT mode (default OFF): at the user-chosen frequency
+ *    (60s / 2 min / 3 min), send the full audio blob so far to Whisper
+ *    (turbo model) → populate draft segments with progressive updates.
+ * 3. On stop: ALWAYS run a FINAL high-accuracy batch pass (whisper-large-v3
+ *    + verbose_json segment timestamps) → replaces draft (unless user
+ *    confirms keep edits). Final is source of truth for summary / download / export.
+ * 4. Rate-limit on draft: friendly message + stop further draft requests for
+ *    the rest of this meeting. Final batch is never blocked by that flag.
  *
  * DRAFT VS FINAL STATE
  * --------------------
  * transcriptState.version: 'none' | 'draft' | 'final'
  * transcriptState.phase: idle | draft_updating | final_processing | ready | error
  * User text/speaker edits set userEdited=true. Final replace asks first if edited.
+ * Badge + status line always show which version and processing stage is active.
+ *
+ * DRAFT FREQUENCY (Settings → "Draft update frequency")
+ * ----------------------------------------------------
+ * Value 0 = Off (default). Values 60 / 120 / 180 = seconds between draft polls.
+ * Stored as splice_draft_freq in localStorage.
  *
  * ICONS (offline)
  * --------------
  * Tabler outline icons are vendored as an inline SVG <symbol> sprite (no CDN).
  * HTML uses <svg class="icon"><use href="#ti-name"></use></svg>; JS uses icon(name).
- * * TRANSCRIPTION LAYER (pluggable)
+ *
+ * TRANSCRIPTION LAYER (pluggable)
  * --------------------------------
- * All ASR goes through TranscriptionBackend.swap implementation if needed
+ * All ASR goes through TranscriptionBackend — swap implementation if needed
  * (e.g. different batch vs streaming endpoints). UI only consumes segments.
  */
 (function () {
@@ -477,16 +505,34 @@
   }
 
   const el = id => document.getElementById(id);
-  const DRAFT_INTERVAL_MS = 25000; // near-live lag target (~25s)
+  /** Allowed draft intervals (seconds). 0 = Off. Default is 0. */
+  const DRAFT_FREQ_OPTIONS = [0, 60, 120, 180];
   const SPEAKER_GAP_SEC = 1.8;     // silence gap → possible speaker change
   const SPEAKER_COLORS = ['#448aff', '#69f0ae', '#ffd740', '#ff5252', '#b388ff', '#24c6dc'];
 
-  // ── Settings ──────────────────────────────────────────────────────────
-  let apiKey = localStorage.getItem('sitescribe_groq_key') || '';
-  let nearLiveEnabled = localStorage.getItem('sitescribe_near_live') === '1';
+  // ── Settings (migrate old SiteScribe keys → Splice) ───────────────────
+  function loadStored(key, legacyKey) {
+    return localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null) || '';
+  }
+
+  let apiKey = loadStored('splice_groq_key', 'sitescribe_groq_key');
+  /**
+   * draftFreqSec: 0 = Off (default). When > 0, near-live draft polls every N seconds.
+   * Migrates legacy boolean sitescribe_near_live=1 → 60s.
+   */
+  let draftFreqSec = (function () {
+    const raw = loadStored('splice_draft_freq', null);
+    if (raw !== '' && raw != null) {
+      const n = parseInt(raw, 10);
+      if (DRAFT_FREQ_OPTIONS.includes(n)) return n;
+    }
+    // Legacy: near-live toggle was boolean; if enabled, default to 60s
+    if (localStorage.getItem('sitescribe_near_live') === '1') return 60;
+    return 0; // Off by default
+  })();
 
   if (apiKey) el('api-key').value = apiKey;
-  el('near-live-toggle').checked = nearLiveEnabled;
+  el('draft-frequency').value = String(draftFreqSec);
 
   // ── Recording state ───────────────────────────────────────────────────
   let captSt = null, micStream = null, audioCtx = null;
@@ -499,6 +545,12 @@
   let draftInFlight = false;
   let draftAbort = null;
   let finalInFlight = false;
+  /**
+   * When a draft request hits rate limits, we stop draft requests for the
+   * remainder of this meeting only. Final batch transcription is never gated
+   * by this flag.
+   */
+  let draftRateLimitedThisMeeting = false;
 
   const isDesktop = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 
@@ -506,8 +558,9 @@
   /**
    * segments[]: { id, start, end, speakerId, text }
    * speakers:   { [id]: displayName }
-   * version:    which generation is currently shown
+   * version:    which generation is currently shown ('none'|'draft'|'final')
    * userEdited: true after any user text/speaker change (guards final replace)
+   * Final version (with edits) feeds summarization, raw download, and pro export.
    */
   const transcriptState = {
     phase: 'idle',
@@ -520,6 +573,26 @@
     meetingStartedAt: null,
     durationSec: 0
   };
+
+  // ── Errors with HTTP status (for rate-limit detection) ────────────────
+  class ApiError extends Error {
+    constructor(message, status) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = status || 0;
+    }
+  }
+
+  function isRateLimitError(err) {
+    if (!err) return false;
+    if (err.status === 429) return true;
+    const msg = String(err.message || err).toLowerCase();
+    return msg.includes('429') ||
+      msg.includes('rate_limit') ||
+      msg.includes('rate limit') ||
+      msg.includes('too many requests') ||
+      msg.includes('tokens per minute');
+  }
 
   // ── Pluggable transcription backend ───────────────────────────────────
   const TranscriptionBackend = {
@@ -554,7 +627,10 @@
         body: formData,
         signal: opts.signal
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const body = await res.text();
+        throw new ApiError(body || res.statusText || 'Transcription failed', res.status);
+      }
       const data = await res.json();
       const text = data.text || '';
       let segments = Array.isArray(data.segments)
@@ -701,6 +777,10 @@
     el('btn-dl-tx').disabled = !hasSegs;
     // Allow manual final re-run when we have audio and aren't already processing
     el('btn-final-tx').disabled = !audioBlob || finalInFlight || transcriptState.phase === 'final_processing';
+    // Professional export enabled once we have transcript and/or summary
+    const canExport = hasSegs || !!transcriptState.summaryMarkdown;
+    el('btn-export-doc').disabled = !canExport;
+    el('btn-export-pdf').disabled = !canExport;
 
     if (!hasSegs) {
       host.innerHTML = '<div class="seg empty-msg">No transcript yet</div>';
@@ -805,15 +885,21 @@
     el('settings-modal').style.display = show ? 'flex' : 'none';
     if (show) {
       el('api-key').value = apiKey;
-      el('near-live-toggle').checked = nearLiveEnabled;
+      el('draft-frequency').value = String(draftFreqSec);
     }
   };
 
   window.saveSettings = function () {
     apiKey = el('api-key').value.trim();
-    nearLiveEnabled = el('near-live-toggle').checked;
-    localStorage.setItem('sitescribe_groq_key', apiKey);
-    localStorage.setItem('sitescribe_near_live', nearLiveEnabled ? '1' : '0');
+    const freq = parseInt(el('draft-frequency').value, 10);
+    draftFreqSec = DRAFT_FREQ_OPTIONS.includes(freq) ? freq : 0;
+    localStorage.setItem('splice_groq_key', apiKey);
+    localStorage.setItem('splice_draft_freq', String(draftFreqSec));
+    // Clear legacy keys so old toggles don't resurrect after rename
+    try {
+      localStorage.removeItem('sitescribe_groq_key');
+      localStorage.removeItem('sitescribe_near_live');
+    } catch (_) { /* ignore */ }
     toggleModal(false);
   };
 
@@ -891,7 +977,8 @@
       if (MediaRecorder.isTypeSupported(t)) { mimeUsed = t; break; }
     }
 
-    // Reset transcript for new session
+    // Reset transcript for new session; clear per-meeting draft rate-limit flag
+    draftRateLimitedThisMeeting = false;
     resetTranscriptState(false);
     transcriptState.meetingStartedAt = new Date();
     recStartedAt = Date.now();
@@ -960,10 +1047,10 @@
     el('how-mob').classList.add('hidden');
     setRecStatus('Recording · 00:00', true);
 
-    // Optional near-live draft loop
-    if (nearLiveEnabled) startDraftLoop();
+    // Optional near-live draft loop (Off by default; frequency from Settings)
+    if (draftFreqSec > 0) startDraftLoop();
     else {
-      setTxStatus('', 'Recording… Near-live draft is off. A high-accuracy final transcript will run when you stop.');
+      setTxStatus('', 'Recording… Draft updates are Off. A high-accuracy final transcript will run when you stop.');
     }
   }
 
@@ -978,11 +1065,14 @@
   };
 
   window.stopRecording = function () {
+    // Stop draft polls immediately so they never contend with the final batch
+    stopDraftLoop();
     if (rec && rec.state !== 'inactive') rec.stop();
     // Tracks cleaned in onstop; also stop early if share still open
     el('btn-start').classList.remove('hidden');
     el('btn-stop').classList.add('hidden');
     setRecStatus('Processing…', false);
+    setTxStatus('busy', 'Recording stopped — preparing final high-accuracy transcript…');
   };
 
   window.newRecording = function () {
@@ -1015,20 +1105,29 @@
       transcriptState.durationSec = 0;
     }
     renderTranscript();
-    setTxStatus('', 'Record a meeting to generate a transcript. Turn on near-live draft in Settings for progressive updates during long sessions.');
+    setTxStatus('', 'Record a meeting to generate a transcript. Optional draft updates (Settings → Draft update frequency) give progressive updates on long sessions; final batch always runs on stop.');
   }
 
   // ── Near-live (chunked) draft loop ────────────────────────────────────
   /**
-   * Periodically builds a Blob from ALL chunks so far (includes WebM headers
-   * from the first chunk) and requests a draft transcription. Overlapping
-   * requests are skipped; an in-flight draft is aborted when a newer one starts
-   * after the interval, or when recording stops for the final pass.
+   * Hybrid draft workflow (optional, Off by default):
+   * - Interval comes from draftFreqSec (60 / 120 / 180). Default 0 = Off.
+   * - Each tick builds a Blob from ALL MediaRecorder chunks so far (first
+   *   chunk carries WebM/Ogg headers so the container stays valid).
+   * - Overlapping requests are skipped; in-flight draft is aborted on stop
+   *   so the final high-accuracy batch is never blocked.
+   * - On HTTP 429 / rate-limit: stop further drafts for this meeting only.
    */
+  function draftIntervalMs() {
+    return Math.max(0, draftFreqSec) * 1000;
+  }
+
   function startDraftLoop() {
     stopDraftLoop();
-    setTxStatus('busy', 'Near-live draft enabled — first draft appears after ~' + (DRAFT_INTERVAL_MS / 1000) + 's…');
-    draftTimerId = setInterval(() => { void runDraftTranscription(); }, DRAFT_INTERVAL_MS);
+    if (draftFreqSec <= 0 || draftRateLimitedThisMeeting) return;
+    const secs = draftFreqSec;
+    setTxStatus('busy', 'Draft mode on — first update after ~' + secs + 's, then every ' + secs + 's. Final high-accuracy pass still runs when you stop.');
+    draftTimerId = setInterval(() => { void runDraftTranscription(); }, draftIntervalMs());
   }
 
   function stopDraftLoop() {
@@ -1040,11 +1139,26 @@
     draftInFlight = false;
   }
 
+  /**
+   * Friendly handling: disable draft for remainder of meeting; leave any
+   * existing draft on screen; never touch finalInFlight / final batch path.
+   */
+  function handleDraftRateLimit() {
+    draftRateLimitedThisMeeting = true;
+    stopDraftLoop();
+    setTxStatus(
+      'warn',
+      'Draft updates paused for this meeting — transcription service rate limit reached. ' +
+      'Recording continues; the high-accuracy final transcript will still run when you stop.'
+    );
+  }
+
   async function runDraftTranscription() {
-    if (!nearLiveEnabled || draftInFlight || finalInFlight) return;
+    // Gated by frequency setting, per-meeting rate-limit flag, and concurrency
+    if (draftFreqSec <= 0 || draftRateLimitedThisMeeting || draftInFlight || finalInFlight) return;
     if (!chunks.length || !rec || rec.state === 'inactive') return;
-    // Need a meaningful amount of audio before first draft
-    if (elapsedSec < 8) return;
+    // Wait for a meaningful amount of audio before first draft
+    if (elapsedSec < Math.min(15, draftFreqSec * 0.5)) return;
 
     draftInFlight = true;
     transcriptState.phase = 'draft_updating';
@@ -1069,11 +1183,15 @@
         return;
       }
       applyTranscript(result.segments, 'draft');
-      setTxStatus('warn', 'Draft transcript updating… (near-live, lower accuracy). Final high-accuracy version runs when recording stops.');
+      setTxStatus('warn', 'Draft transcript (near-live, lower accuracy). Final high-accuracy version replaces this when recording stops.');
     } catch (e) {
       if (e.name === 'AbortError') return;
       console.error(e);
-      setTxStatus('err', 'Draft transcription error: ' + (e.message || e));
+      if (isRateLimitError(e)) {
+        handleDraftRateLimit();
+        return;
+      }
+      setTxStatus('err', 'Draft transcription error: ' + (e.message || e) + ' — final batch will still run when you stop.');
     } finally {
       draftInFlight = false;
     }
@@ -1110,13 +1228,17 @@
     setTxStatus('busy', 'Processing final high-accuracy version…');
 
     try {
+      // Final batch is never gated by draftRateLimitedThisMeeting
       const result = await TranscriptionBackend.transcribe(audioBlob, { mode: 'final' });
       applyTranscript(result.segments, 'final');
       setTxStatus('ok', 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.');
     } catch (e) {
       console.error(e);
       transcriptState.phase = 'error';
-      setTxStatus('err', 'Final transcription failed: ' + (e.message || e));
+      const hint = isRateLimitError(e)
+        ? ' Rate limit on the final pass — wait a moment and use “Run final transcription” again.'
+        : '';
+      setTxStatus('err', 'Final transcription failed: ' + (e.message || e) + hint);
       // Keep any existing draft visible
       if (transcriptState.version === 'none') updateVersionBadge();
     } finally {
@@ -1130,14 +1252,15 @@
     if (!audioBlob) return;
     const a = document.createElement('a');
     a.href = audioUrl;
-    a.download = `sitescribe-${tsFile()}.${extOf(mimeUsed)}`;
+    a.download = `splice-${tsFile()}.${extOf(mimeUsed)}`;
     a.click();
   };
 
   window.downloadTranscript = function () {
     if (!transcriptState.segments.length) return;
+    // Raw download always reflects the on-screen version (prefer final after stop)
     const header = [
-      'SiteScribe Transcript',
+      'Splice Transcript',
       'Version: ' + transcriptState.version + (transcriptState.userEdited ? ' (edited)' : ''),
       'Meeting: ' + (el('meeting-title').value.trim() || '(untitled)'),
       'Recorded: ' + (transcriptState.meetingStartedAt ? transcriptState.meetingStartedAt.toISOString() : ''),
@@ -1148,7 +1271,7 @@
     const blob = new Blob([header + body + '\n'], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `sitescribe-transcript-${tsFile()}.txt`;
+    a.download = `splice-transcript-${tsFile()}.txt`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
@@ -1217,6 +1340,9 @@
       const resultText = data.choices[0].message.content;
       transcriptState.summaryMarkdown = resultText;
       transcriptState.summaryMode = templateKey;
+      // Final (or current) transcript + this summary drive professional exports
+      el('btn-export-doc').disabled = false;
+      el('btn-export-pdf').disabled = false;
       el('output-card').classList.remove('hidden');
       el('output').innerHTML = marked.parse(resultText);
       el('output').dataset.rawMarkdown = resultText;
@@ -1241,16 +1367,24 @@
 
   // ── Professional export (project-record package) ──────────────────────
   /**
-   * Builds a meeting record with metadata + summary + full transcript.
-   * - doc: Word-compatible HTML (.doc) — opens cleanly in Word / Google Docs
+   * Meeting package for project documentation / turnover:
+   * metadata + chosen summary (if any) + full on-screen transcript (final preferred).
+   * - doc: Word-compatible HTML (.doc) — opens in Word / Google Docs / LibreOffice
    * - pdf: print-ready window (user chooses Save as PDF)
+   * Keeps Splice single-file — no heavy DOCX library required.
    */
   window.exportProfessional = function (format) {
     if (!transcriptState.segments.length && !transcriptState.summaryMarkdown) {
       alert('Nothing to export yet. Generate a transcript and/or summary first.');
       return;
     }
-    const title = el('meeting-title').value.trim() || 'SiteScribe Meeting Record';
+    if (transcriptState.version === 'draft') {
+      const cont = confirm(
+        'Exporting a DRAFT transcript. For project records, wait for the final high-accuracy version. Continue anyway?'
+      );
+      if (!cont) return;
+    }
+    const title = el('meeting-title').value.trim() || 'Splice Meeting Record';
     const modeLabel = transcriptState.summaryMode === 'meeting_action_items'
       ? 'Meeting Action Items'
       : transcriptState.summaryMode === 'general'
@@ -1297,20 +1431,20 @@
     <div><strong>Duration:</strong> ${escapeHtml(meta.duration)}</div>
     <div><strong>Transcript version:</strong> ${escapeHtml(meta.txVersion)}</div>
     <div><strong>Summary mode:</strong> ${escapeHtml(meta.summaryMode)}</div>
-    <div><strong>Generated by:</strong> SiteScribe</div>
+    <div><strong>Generated by:</strong> Splice</div>
   </div>
   <h2>Summary / Action Items</h2>
   ${summaryHtml}
   <h2>Full Transcript</h2>
   ${transcriptHtml || '<p><em>No transcript segments.</em></p>'}
-  <div class="footer">Project documentation export from SiteScribe. Verify technical values against source audio before relying on this record for contractual use.</div>
+  <div class="footer">Project documentation export from Splice. Verify technical values against source audio before relying on this record for contractual use.</div>
 </body>
 </html>`;
 
     if (format === 'pdf') {
       const w = window.open('', '_blank');
       if (!w) {
-        alert('Pop-up blocked. Allow pop-ups to export PDF, or use Export DOCX.');
+        alert('Pop-up blocked. Allow pop-ups to export PDF, or use Export Word.');
         return;
       }
       w.document.open();
@@ -1325,11 +1459,10 @@
     }
 
     // Word-compatible HTML package (.doc) — opens in Word / Google Docs / LibreOffice
-    // without a bundler or heavy DOCX library (keeps SiteScribe single-file).
     const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `sitescribe-record-${tsFile()}.doc`;
+    a.download = `splice-record-${tsFile()}.doc`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
