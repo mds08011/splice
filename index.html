@@ -313,7 +313,7 @@
         <li>In the share dialog, pick the meeting tab or entire screen</li>
         <li>Enable <strong>Share tab/system audio</strong>, then Share</li>
       </ol>
-      <p class="note">Mic + system audio are mixed so your voice and remote parties are both recorded.</p>
+      <p class="note">Mic + system audio are mixed so your voice and remote parties are both recorded. Long meetings (30–90+ min) are auto-optimized and chunked for final transcription; Download audio stays full quality.</p>
     </div>
     <div id="how-mob" class="how hidden">
       <strong>Field / mobile — microphone</strong>
@@ -323,6 +323,7 @@
         <li>Place the device centrally for in-person meetings</li>
         <li>Stop when finished, then review transcript</li>
       </ol>
+      <p class="note">Long field sessions are supported: the final pass optimizes and splits audio as needed. Your download remains the original recording.</p>
     </div>
 
     <div id="status" class="status-text">Ready to record</div>
@@ -357,7 +358,7 @@
     <!-- Status line for draft vs final processing -->
     <div class="tx-status" id="tx-status">
       <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-info-circle"></use></svg>
-      <span id="tx-status-text">Record a meeting to generate a transcript. Optional draft updates (Settings → Draft update frequency) give progressive updates on long sessions; final batch always runs on stop.</span>
+      <span id="tx-status-text">Record a meeting to generate a transcript. Long meetings are optimized and auto-chunked on the final pass (original download stays full quality). Optional draft updates: Settings → Draft update frequency.</span>
     </div>
 
     <div id="speaker-bar" class="speaker-bar hidden"></div>
@@ -442,6 +443,41 @@
       When enabled, progressive drafts appear at the chosen interval; the final batch still runs when you stop and becomes the source of truth.
     </p>
 
+    <!--
+      Final-pass long-audio controls (independent of draft):
+      - Compress: mono 16 kHz re-encode for Whisper (original download unchanged)
+      - Chunk length: target segment size when auto-chunking kicks in
+      - Force chunking: testing override
+    -->
+    <div class="toggle-row">
+      <input type="checkbox" id="final-compress">
+      <label for="final-compress">
+        Compress audio for final transcription
+        <span class="sub">On by default. Re-encodes a mono 16&nbsp;kHz copy for the API only. Download audio stays full quality.</span>
+      </label>
+    </div>
+
+    <label class="field-label" for="final-chunk-min">Chunk length for long recordings</label>
+    <select id="final-chunk-min">
+      <option value="5">5 minutes</option>
+      <option value="8">8 minutes</option>
+      <option value="10">10 minutes (default)</option>
+      <option value="12">12 minutes</option>
+      <option value="15">15 minutes</option>
+    </select>
+    <p class="hint">
+      Meetings longer than ~15–20 minutes (or still over ~20&nbsp;MB after optimize) are split automatically so Groq never returns “Request Entity Too Large.”
+      Each piece is transcribed, then stitched into one continuous final transcript. Chunk length may be shortened slightly to stay under the upload limit.
+    </p>
+
+    <div class="toggle-row">
+      <input type="checkbox" id="force-chunk">
+      <label for="force-chunk">
+        Always chunk final transcription
+        <span class="sub">For testing. Forces multi-part final pass even on short meetings.</span>
+      </label>
+    </div>
+
     <div class="btn-row">
       <button class="btn" onclick="toggleModal(false)">Cancel</button>
       <button class="btn btn-primary" onclick="saveSettings()">Save</button>
@@ -468,6 +504,18 @@
  *    confirms keep edits). Final is source of truth for summary / download / export.
  * 4. Rate-limit on draft: friendly message + stop further draft requests for
  *    the rest of this meeting. Final batch is never blocked by that flag.
+ *
+ * FINAL-PASS LONG AUDIO (compression + chunking)
+ * ----------------------------------------------
+ * Groq direct upload limit is 25 MB ("request_too_large"). Long dual-capture
+ * WebMs often exceed that. Final path only (draft unchanged):
+ *   a) Optionally re-encode mono 16 kHz WAV for Whisper (original audioBlob
+ *      kept untouched for Download audio).
+ *   b) If still > SAFE_SIZE_BYTES (~20 MB) or > MAX_SINGLE_DURATION_SEC
+ *      (~18 min), or user forced chunking → split into overlapping chunks
+ *      (default 10 min, 8 s overlap), transcribe each, stitch timestamps.
+ *   c) Short/optimized meetings still use a single request (fast path).
+ * Pure browser: Web Audio decode/resample + PCM WAV writer (no ffmpeg.wasm).
  *
  * DRAFT VS FINAL STATE
  * --------------------
@@ -510,6 +558,26 @@
   const SPEAKER_GAP_SEC = 1.8;     // silence gap → possible speaker change
   const SPEAKER_COLORS = ['#448aff', '#69f0ae', '#ffd740', '#ff5252', '#b388ff', '#24c6dc'];
 
+  /**
+   * Final-pass size / chunk thresholds (easy to tune).
+   * Groq free-tier direct upload hard limit is 25 MB; we stay under ~20–22 MB.
+   * Mono 16 kHz 16-bit PCM ≈ 32 KB/s → ~10.9 min fits in SAFE_SIZE_BYTES.
+   */
+  const FINAL_TX = {
+    SAFE_SIZE_BYTES: 20 * 1024 * 1024,       // auto-chunk if still larger
+    MAX_SINGLE_DURATION_SEC: 18 * 60,        // auto-chunk long meetings even if small
+    DEFAULT_CHUNK_MIN: 10,
+    CHUNK_OPTIONS_MIN: [5, 8, 10, 12, 15],
+    OVERLAP_SEC: 8,                          // 5–10 s recommended for stitch quality
+    TARGET_SAMPLE_RATE: 16000,               // Whisper-native rate (Groq downsamples to this)
+    TARGET_CHANNELS: 1,
+    BYTES_PER_SAMPLE: 2                      // 16-bit PCM WAV
+  };
+  /** Max chunk duration so a mono 16 kHz WAV stays under SAFE_SIZE_BYTES (header ignored). */
+  FINAL_TX.MAX_WAV_CHUNK_SEC = Math.floor(
+    FINAL_TX.SAFE_SIZE_BYTES / (FINAL_TX.TARGET_SAMPLE_RATE * FINAL_TX.TARGET_CHANNELS * FINAL_TX.BYTES_PER_SAMPLE)
+  );
+
   // ── Settings (migrate old SiteScribe keys → Splice) ───────────────────
   function loadStored(key, legacyKey) {
     return localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null) || '';
@@ -531,8 +599,21 @@
     return 0; // Off by default
   })();
 
+  /** Compress (mono 16 kHz re-encode) for final pass — default On. */
+  let finalCompress = loadStored('splice_final_compress', null) !== '0';
+  /** Target chunk length in minutes (clamped to CHUNK_OPTIONS_MIN). Default 10. */
+  let finalChunkMin = (function () {
+    const n = parseInt(loadStored('splice_final_chunk_min', null), 10);
+    return FINAL_TX.CHUNK_OPTIONS_MIN.includes(n) ? n : FINAL_TX.DEFAULT_CHUNK_MIN;
+  })();
+  /** Force multi-part final even when under thresholds — default Off. */
+  let forceFinalChunk = loadStored('splice_force_chunk', null) === '1';
+
   if (apiKey) el('api-key').value = apiKey;
   el('draft-frequency').value = String(draftFreqSec);
+  el('final-compress').checked = finalCompress;
+  el('final-chunk-min').value = String(finalChunkMin);
+  el('force-chunk').checked = forceFinalChunk;
 
   // ── Recording state ───────────────────────────────────────────────────
   let captSt = null, micStream = null, audioCtx = null;
@@ -647,6 +728,340 @@
       return { text, segments };
     }
   };
+
+  // ── Final-pass audio optimize / chunk / stitch (pure Web Audio + WAV) ─
+  /**
+   * Why WAV mono 16 kHz (not Opus/MediaRecorder):
+   * - Matches Groq/Whisper preprocessing (16 kHz mono) with no extra deps
+   * - PCM encode is offline/fast (MediaRecorder is real-time — too slow for 30–90 min)
+   * - Size is predictable: ~32 KB/s → auto-chunk keeps each upload under SAFE_SIZE_BYTES
+   * Original high-quality recording (audioBlob) is never modified; Download audio uses it.
+   */
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  function estimatePcmWavBytes(durationSec) {
+    const data = Math.ceil(Math.max(0, durationSec) * FINAL_TX.TARGET_SAMPLE_RATE) *
+      FINAL_TX.TARGET_CHANNELS * FINAL_TX.BYTES_PER_SAMPLE;
+    return 44 + data;
+  }
+
+  /** Mix multi-channel AudioBuffer to mono (average). */
+  function mixToMonoBuffer(buffer) {
+    if (buffer.numberOfChannels === 1) return buffer;
+    const len = buffer.length;
+    const mono = new AudioBuffer({
+      length: len,
+      numberOfChannels: 1,
+      sampleRate: buffer.sampleRate
+    });
+    const out = mono.getChannelData(0);
+    const chans = [];
+    for (let c = 0; c < buffer.numberOfChannels; c++) chans.push(buffer.getChannelData(c));
+    const n = chans.length;
+    for (let i = 0; i < len; i++) {
+      let sum = 0;
+      for (let c = 0; c < n; c++) sum += chans[c][i];
+      out[i] = sum / n;
+    }
+    return mono;
+  }
+
+  /** Resample mono buffer to targetRate via OfflineAudioContext. */
+  async function resampleMono(buffer, targetRate) {
+    const mono = mixToMonoBuffer(buffer);
+    if (mono.sampleRate === targetRate) return mono;
+    const length = Math.max(1, Math.ceil(mono.duration * targetRate));
+    const offline = new OfflineAudioContext(1, length, targetRate);
+    const src = offline.createBufferSource();
+    src.buffer = mono;
+    src.connect(offline.destination);
+    src.start(0);
+    return offline.startRendering();
+  }
+
+  /**
+   * Fast pure-JS WAV writer (16-bit PCM). Groq accepts audio/wav.
+   * @param {AudioBuffer} buffer mono (or first channel used)
+   */
+  function audioBufferToWavBlob(buffer) {
+    const numChannels = 1;
+    const sampleRate = buffer.sampleRate;
+    const samples = buffer.numberOfChannels > 0 ? buffer.getChannelData(0) : new Float32Array(0);
+    const dataSize = samples.length * 2;
+    const ab = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(ab);
+    const writeStr = (off, s) => {
+      for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    let o = 44;
+    for (let i = 0; i < samples.length; i++) {
+      let s = samples[i];
+      if (s > 1) s = 1;
+      else if (s < -1) s = -1;
+      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      o += 2;
+    }
+    return new Blob([ab], { type: 'audio/wav' });
+  }
+
+  function sliceAudioBuffer(buffer, startSec, endSec) {
+    const sr = buffer.sampleRate;
+    const start = Math.max(0, Math.floor(startSec * sr));
+    const end = Math.min(buffer.length, Math.ceil(endSec * sr));
+    const length = Math.max(1, end - start);
+    const out = new AudioBuffer({
+      length,
+      numberOfChannels: buffer.numberOfChannels,
+      sampleRate: sr
+    });
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      out.getChannelData(c).set(buffer.getChannelData(c).subarray(start, start + length));
+    }
+    return out;
+  }
+
+  /**
+   * Plan overlapping windows covering [0, durationSec).
+   * step = chunkSec - overlap so neighbors share OVERLAP_SEC of audio.
+   */
+  function planChunkWindows(durationSec, chunkSec, overlapSec) {
+    const windows = [];
+    if (durationSec <= 0) return windows;
+    const step = Math.max(1, chunkSec - overlapSec);
+    let start = 0;
+    while (start < durationSec - 0.01) {
+      const end = Math.min(durationSec, start + chunkSec);
+      windows.push({ startSec: start, endSec: end, offsetSec: start });
+      if (end >= durationSec - 0.01) break;
+      start += step;
+      // Guard against zero progress on pathological inputs
+      if (windows.length > 500) break;
+    }
+    return windows;
+  }
+
+  /**
+   * Merge chunk transcriptions with absolute timestamps.
+   * Drops segments whose midpoint falls in the first half of each chunk’s
+   * overlap region (those belong to the previous chunk).
+   */
+  function stitchChunkSegments(chunkResults, overlapSec) {
+    const merged = [];
+    for (let i = 0; i < chunkResults.length; i++) {
+      const { offsetSec, segments } = chunkResults[i];
+      // Keep boundary: after first half of overlap for chunks after the first
+      const keepAfter = i === 0 ? -Infinity : offsetSec + (overlapSec / 2);
+      for (const seg of segments || []) {
+        const absStart = (Number(seg.start) || 0) + offsetSec;
+        const absEnd = (Number(seg.end) || 0) + offsetSec;
+        const mid = (absStart + absEnd) / 2;
+        if (mid < keepAfter) continue;
+        const text = (seg.text || '').trim();
+        if (!text) continue;
+        merged.push({ start: absStart, end: absEnd, text });
+      }
+    }
+    merged.sort((a, b) => a.start - b.start || a.end - b.end);
+    return merged;
+  }
+
+  async function decodeBlobToAudioBuffer(blob) {
+    const ab = await blob.arrayBuffer();
+    // Some browsers detach the buffer; copy first for safety
+    const copy = ab.slice(0);
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    try {
+      return await ctx.decodeAudioData(copy);
+    } finally {
+      try { await ctx.close(); } catch (_) { /* ignore */ }
+    }
+  }
+
+  /**
+   * Build API-ready parts for the final pass.
+   * @returns {Promise<{
+   *   parts: Array<{ blob: Blob, offsetSec: number }>,
+   *   chunked: boolean,
+   *   optimized: boolean,
+   *   durationSec: number,
+   *   totalBytes: number
+   * }>}
+   */
+  async function prepareFinalAudioParts(sourceBlob, opts = {}) {
+    const compress = opts.compress !== false;
+    const forceChunk = !!opts.forceChunk;
+    const targetChunkMin = opts.chunkMin || FINAL_TX.DEFAULT_CHUNK_MIN;
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+
+    const knownDuration = Math.max(
+      0,
+      Number(opts.durationSec) || transcriptState.durationSec || elapsedSec || 0
+    );
+
+    // Fast path: compress Off, size under safe limit, not forced to chunk — send original as-is
+    const originalOkSize = sourceBlob.size > 0 && sourceBlob.size <= FINAL_TX.SAFE_SIZE_BYTES;
+    const originalOkDuration = knownDuration === 0 || knownDuration <= FINAL_TX.MAX_SINGLE_DURATION_SEC;
+    if (!compress && !forceChunk && originalOkSize && originalOkDuration) {
+      return {
+        parts: [{ blob: sourceBlob, offsetSec: 0 }],
+        chunked: false,
+        optimized: false,
+        durationSec: knownDuration,
+        totalBytes: sourceBlob.size
+      };
+    }
+
+    onProgress('Optimizing audio…');
+    let decoded;
+    try {
+      decoded = await decodeBlobToAudioBuffer(sourceBlob);
+    } catch (e) {
+      // If we cannot decode and original already fits, fall back to single original upload
+      if (originalOkSize && !forceChunk) {
+        return {
+          parts: [{ blob: sourceBlob, offsetSec: 0 }],
+          chunked: false,
+          optimized: false,
+          durationSec: knownDuration,
+          totalBytes: sourceBlob.size
+        };
+      }
+      throw new Error('Could not decode recording for long-audio processing: ' + (e.message || e));
+    }
+
+    const durationSec = decoded.duration || knownDuration;
+    let workBuffer = decoded;
+    let optimized = false;
+
+    if (compress) {
+      onProgress('Optimizing audio… (mono 16 kHz)');
+      workBuffer = await resampleMono(decoded, FINAL_TX.TARGET_SAMPLE_RATE);
+      optimized = true;
+    } else {
+      // Still mono-mix for stable chunking; keep original sample rate if not compressing
+      workBuffer = mixToMonoBuffer(decoded);
+    }
+
+    const estFullBytes = optimized
+      ? estimatePcmWavBytes(durationSec)
+      : sourceBlob.size;
+
+    const needsChunk =
+      forceChunk ||
+      durationSec > FINAL_TX.MAX_SINGLE_DURATION_SEC ||
+      estFullBytes > FINAL_TX.SAFE_SIZE_BYTES ||
+      (!optimized && sourceBlob.size > FINAL_TX.SAFE_SIZE_BYTES);
+
+    // Effective chunk length: user preference, but never so long that one WAV exceeds safe size
+    let chunkSec = Math.max(60, (targetChunkMin || FINAL_TX.DEFAULT_CHUNK_MIN) * 60);
+    if (optimized || needsChunk) {
+      chunkSec = Math.min(chunkSec, FINAL_TX.MAX_WAV_CHUNK_SEC);
+    }
+    // Uncompressed high-rate audio: if still encoding slices as WAV at original rate, size grows —
+    // when not optimized, re-encode slices at 16 kHz anyway so each part stays under limit.
+    if (needsChunk && !optimized) {
+      onProgress('Optimizing audio… (mono 16 kHz for chunking)');
+      workBuffer = await resampleMono(workBuffer, FINAL_TX.TARGET_SAMPLE_RATE);
+      optimized = true;
+      chunkSec = Math.min(chunkSec, FINAL_TX.MAX_WAV_CHUNK_SEC);
+    }
+
+    if (!needsChunk) {
+      onProgress('Optimizing audio… encoding');
+      const blob = optimized
+        ? audioBufferToWavBlob(workBuffer)
+        : sourceBlob;
+      // Safety: if encoded single blob still too large, fall through to chunking
+      if (blob.size <= FINAL_TX.SAFE_SIZE_BYTES && !forceChunk) {
+        return {
+          parts: [{ blob, offsetSec: 0 }],
+          chunked: false,
+          optimized,
+          durationSec,
+          totalBytes: blob.size
+        };
+      }
+      // Force chunk path below
+      if (!optimized) {
+        workBuffer = await resampleMono(mixToMonoBuffer(decoded), FINAL_TX.TARGET_SAMPLE_RATE);
+        optimized = true;
+      }
+      chunkSec = Math.min(chunkSec, FINAL_TX.MAX_WAV_CHUNK_SEC);
+    }
+
+    let windows = planChunkWindows(durationSec, chunkSec, FINAL_TX.OVERLAP_SEC);
+    // Force-chunk testing: ensure at least two parts when the meeting is long enough
+    if (forceChunk && windows.length < 2 && durationSec > 4) {
+      const mid = durationSec / 2;
+      const ov = FINAL_TX.OVERLAP_SEC / 2;
+      windows = [
+        { startSec: 0, endSec: Math.min(durationSec, mid + ov), offsetSec: 0 },
+        {
+          startSec: Math.max(0, mid - ov),
+          endSec: durationSec,
+          offsetSec: Math.max(0, mid - ov)
+        }
+      ];
+    }
+    const parts = [];
+    for (let i = 0; i < windows.length; i++) {
+      onProgress('Optimizing audio… preparing chunk ' + (i + 1) + ' of ' + windows.length);
+      const w = windows[i];
+      const sliced = sliceAudioBuffer(workBuffer, w.startSec, w.endSec);
+      const blob = audioBufferToWavBlob(sliced);
+      // Extreme safety: if a single window is still huge (clock skew / huge rate), sub-split
+      if (blob.size > FINAL_TX.SAFE_SIZE_BYTES) {
+        const subDur = (w.endSec - w.startSec) * (FINAL_TX.SAFE_SIZE_BYTES / blob.size) * 0.9;
+        const subWindows = planChunkWindows(w.endSec - w.startSec, Math.max(30, subDur), FINAL_TX.OVERLAP_SEC);
+        for (const sw of subWindows) {
+          const absStart = w.startSec + sw.startSec;
+          const absEnd = w.startSec + sw.endSec;
+          const subSlice = sliceAudioBuffer(workBuffer, absStart, absEnd);
+          parts.push({ blob: audioBufferToWavBlob(subSlice), offsetSec: absStart });
+        }
+      } else {
+        parts.push({ blob, offsetSec: w.offsetSec });
+      }
+    }
+
+    const totalBytes = parts.reduce((s, p) => s + p.blob.size, 0);
+    return {
+      parts,
+      chunked: parts.length > 1,
+      optimized,
+      durationSec,
+      totalBytes
+    };
+  }
+
+  async function transcribeFinalPart(blob, attempt) {
+    try {
+      return await TranscriptionBackend.transcribe(blob, { mode: 'final' });
+    } catch (e) {
+      if (attempt > 0 && (isRateLimitError(e) || (e.status && e.status >= 500))) {
+        await sleep(isRateLimitError(e) ? 6000 : 2000);
+        return transcribeFinalPart(blob, attempt - 1);
+      }
+      throw e;
+    }
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────
   const pad = n => String(n).padStart(2, '0');
@@ -886,6 +1301,9 @@
     if (show) {
       el('api-key').value = apiKey;
       el('draft-frequency').value = String(draftFreqSec);
+      el('final-compress').checked = finalCompress;
+      el('final-chunk-min').value = String(finalChunkMin);
+      el('force-chunk').checked = forceFinalChunk;
     }
   };
 
@@ -893,8 +1311,15 @@
     apiKey = el('api-key').value.trim();
     const freq = parseInt(el('draft-frequency').value, 10);
     draftFreqSec = DRAFT_FREQ_OPTIONS.includes(freq) ? freq : 0;
+    finalCompress = !!el('final-compress').checked;
+    const chunkMin = parseInt(el('final-chunk-min').value, 10);
+    finalChunkMin = FINAL_TX.CHUNK_OPTIONS_MIN.includes(chunkMin) ? chunkMin : FINAL_TX.DEFAULT_CHUNK_MIN;
+    forceFinalChunk = !!el('force-chunk').checked;
     localStorage.setItem('splice_groq_key', apiKey);
     localStorage.setItem('splice_draft_freq', String(draftFreqSec));
+    localStorage.setItem('splice_final_compress', finalCompress ? '1' : '0');
+    localStorage.setItem('splice_final_chunk_min', String(finalChunkMin));
+    localStorage.setItem('splice_force_chunk', forceFinalChunk ? '1' : '0');
     // Clear legacy keys so old toggles don't resurrect after rename
     try {
       localStorage.removeItem('sitescribe_groq_key');
@@ -1105,7 +1530,7 @@
       transcriptState.durationSec = 0;
     }
     renderTranscript();
-    setTxStatus('', 'Record a meeting to generate a transcript. Optional draft updates (Settings → Draft update frequency) give progressive updates on long sessions; final batch always runs on stop.');
+    setTxStatus('', 'Record a meeting to generate a transcript. Long meetings are optimized and auto-chunked on the final pass (original download stays full quality). Optional draft updates: Settings → Draft update frequency.');
   }
 
   // ── Near-live (chunked) draft loop ────────────────────────────────────
@@ -1199,6 +1624,8 @@
 
   /**
    * Full high-accuracy batch pass over the complete recording.
+   * Uses optional mono 16 kHz optimize + automatic chunking so long meetings
+   * never hit Groq “request_too_large”. Original audioBlob stays downloadable.
    * Replaces draft by default; confirms first if the user edited the draft.
    */
   window.runFinalTranscription = async function (auto) {
@@ -1225,19 +1652,79 @@
     finalInFlight = true;
     transcriptState.phase = 'final_processing';
     el('btn-final-tx').disabled = true;
-    setTxStatus('busy', 'Processing final high-accuracy version…');
+    setTxStatus('busy', 'Optimizing audio…');
 
     try {
       // Final batch is never gated by draftRateLimitedThisMeeting
-      const result = await TranscriptionBackend.transcribe(audioBlob, { mode: 'final' });
-      applyTranscript(result.segments, 'final');
-      setTxStatus('ok', 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.');
+      const prepared = await prepareFinalAudioParts(audioBlob, {
+        compress: finalCompress,
+        chunkMin: finalChunkMin,
+        forceChunk: forceFinalChunk,
+        durationSec: transcriptState.durationSec || elapsedSec,
+        onProgress: (msg) => setTxStatus('busy', msg)
+      });
+
+      const n = prepared.parts.length;
+      if (!n) throw new Error('No audio available to transcribe.');
+
+      let rawSegments = [];
+      const failedChunks = [];
+
+      if (n === 1 && !prepared.chunked) {
+        setTxStatus('busy', 'Processing final high-accuracy transcript…');
+        const result = await transcribeFinalPart(prepared.parts[0].blob, 1);
+        rawSegments = result.segments || [];
+      } else {
+        const chunkResults = [];
+        for (let i = 0; i < n; i++) {
+          setTxStatus('busy', 'Processing final transcript… chunk ' + (i + 1) + ' of ' + n);
+          try {
+            const result = await transcribeFinalPart(prepared.parts[i].blob, 1);
+            chunkResults.push({
+              offsetSec: prepared.parts[i].offsetSec,
+              segments: result.segments || []
+            });
+          } catch (chunkErr) {
+            console.error('Final chunk ' + (i + 1) + ' failed:', chunkErr);
+            failedChunks.push(i + 1);
+            // Leave a gap; continue so the rest of the meeting is not lost
+            chunkResults.push({ offsetSec: prepared.parts[i].offsetSec, segments: [] });
+          }
+        }
+        rawSegments = stitchChunkSegments(chunkResults, FINAL_TX.OVERLAP_SEC);
+      }
+
+      if (!rawSegments.length) {
+        throw new Error(
+          failedChunks.length
+            ? 'All chunks failed (e.g. rate limit or network). Wait a moment and use “Run final transcription” again.'
+            : 'Transcription returned no text.'
+        );
+      }
+
+      applyTranscript(rawSegments, 'final');
+      let okMsg = 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.';
+      if (prepared.chunked) {
+        okMsg = 'Final transcript ready (' + n + ' chunks stitched). Edit names, numbers, and technical terms before summarizing or exporting.';
+      }
+      if (failedChunks.length) {
+        setTxStatus(
+          'warn',
+          okMsg + ' Note: chunk(s) ' + failedChunks.join(', ') + ' failed and were skipped — re-run final if needed.'
+        );
+      } else {
+        setTxStatus('ok', okMsg);
+      }
     } catch (e) {
       console.error(e);
       transcriptState.phase = 'error';
-      const hint = isRateLimitError(e)
-        ? ' Rate limit on the final pass — wait a moment and use “Run final transcription” again.'
-        : '';
+      let hint = '';
+      if (isRateLimitError(e)) {
+        hint = ' Rate limit on the final pass — wait a moment and use “Run final transcription” again.';
+      } else if (String(e.message || e).toLowerCase().includes('request_too_large') ||
+                 String(e.message || e).toLowerCase().includes('too large')) {
+        hint = ' File still too large — turn on “Compress audio for final transcription” and try a shorter chunk length in Settings.';
+      }
       setTxStatus('err', 'Final transcription failed: ' + (e.message || e) + hint);
       // Keep any existing draft visible
       if (transcriptState.version === 'none') updateVersionBadge();
