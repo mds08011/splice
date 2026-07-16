@@ -311,9 +311,11 @@
     font-size: 13px; margin-bottom: 12px;
   }
 
+  /* Footer: single neutral privacy line after removing domain-specific copy.
+     Slightly tighter line-height keeps the bar balanced without the old two-line stack. */
   footer {
-    text-align: center; font-size: 11px; color: var(--tx3); line-height: 1.7;
-    border-top: 1px solid var(--bd); padding-top: 14px; margin-top: 4px;
+    text-align: center; font-size: 11px; color: var(--tx3); line-height: 1.5;
+    border-top: 1px solid var(--bd); padding-top: 16px; padding-bottom: 2px; margin-top: 8px;
   }
 </style>
 </head>
@@ -475,8 +477,14 @@
     </div>
   </div>
 
+  <!--
+    Footer (global app shell — visible on record / transcript / summary views).
+    REMOVED: "Splice — privacy-first field recorder for water/wastewater project meetings"
+             (and the <br> that followed it). Domain-specific “water/wastewater project
+             meetings” copy stripped so the footer stays neutral; no replacement promo text.
+    KEPT: privacy / offline note only. Spacing tuned in the footer CSS rule above.
+  -->
   <footer>
-    Splice — privacy-first field recorder for water/wastewater project meetings<br>
     Audio stays local until you transcribe with your API key · Icons work offline
   </footer>
 </div>
