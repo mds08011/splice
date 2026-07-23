@@ -596,12 +596,27 @@
  * User text/speaker edits set userEdited=true. Final replace asks first if edited.
  * Badge + status line always show which version and processing stage is active.
  *
+ * SPEAKER ATTRIBUTION (channel energy, desktop only)
+ * --------------------------------------------------
+ * Desktop dual-capture records mic → LEFT and system/tab audio → RIGHT rather
+ * than summing both to mono. The final pass keeps a 50 ms per-channel RMS
+ * envelope (not the samples — a 2-hour meeting would be gigabytes) and labels
+ * each stitched segment by whichever side is louder: "Me" or "Them".
+ *
+ * This is source separation, NOT diarization. Everyone sharing this machine's
+ * microphone is "Me"; every remote participant is "Them". Splice does not
+ * identify individual voices and exports say so explicitly.
+ *
+ * Mobile captures, pre-stereo recordings, and mono decodes get NO automatic
+ * labels — segments render as plain timestamped lines. The previous heuristic
+ * (alternate Speaker 1/2 on any silence gap ≥ 1.8 s) has been removed: it read
+ * pause timing, not voices, and confidently mislabelled multi-party meetings.
+ *
  * TRANSCRIPT DENSITY / SPEAKER UI
  * -------------------------------
- * DRAFT: compact text-only rows (timestamp + text). Speaker bar, colored labels,
- *   rename, and reassign controls are completely hidden — speaker detection is
- *   incomplete until the final pass; users name speakers only on final.
- * FINAL: full speaker UI + comfortable spacing for review/edit.
+ * DRAFT: compact text-only rows (timestamp + text), no speaker chrome.
+ * FINAL: comfortable spacing; speaker legend, colored labels, rename and
+ *   reassign controls appear only when labels actually exist.
  * Transition: when final replaces draft, speaker-bar / seg-meta fade in via CSS.
  *
  * DRAFT FREQUENCY (Settings → "Draft update frequency")
@@ -635,8 +650,23 @@
   const el = id => document.getElementById(id);
   /** Allowed draft intervals (seconds). 0 = Off. Default is 0. */
   const DRAFT_FREQ_OPTIONS = [0, 60, 120, 180];
-  const SPEAKER_GAP_SEC = 1.8;     // silence gap → possible speaker change
   const SPEAKER_COLORS = ['#448aff', '#69f0ae', '#ffd740', '#ff5252', '#b388ff', '#24c6dc'];
+
+  /**
+   * Channel-energy attribution (desktop dual-capture only).
+   *
+   * Desktop records mic → left channel, system/tab audio → right channel, so
+   * "which channel is louder" is a REAL signal about where a line came from.
+   * This is source separation, not diarization: everyone sharing this machine's
+   * microphone is "Me", and every remote participant is "Them".
+   */
+  const DIARIZE = {
+    ENVELOPE_HOP_SEC: 0.05,   // 50 ms RMS envelope resolution
+    MARGIN_RATIO: 1.3,        // ≈2.3 dB; below this the previous label is held
+    MIN_SEG_SEC: 0.15         // ignore slivers shorter than this when averaging
+  };
+  /** Default display names for the two capture sides (renameable like any speaker). */
+  const SIDE_SPEAKERS = { me: 'Me', them: 'Them' };
 
   /**
    * Final-pass size / chunk thresholds (easy to tune).
@@ -735,6 +765,11 @@
   // ── Recording state ───────────────────────────────────────────────────
   let captSt = null, micStream = null, audioCtx = null;
   let rec = null, chunks = [];
+  /**
+   * True when the current capture routes mic → left / system → right, which is
+   * what makes channel-energy attribution possible. Desktop dual-capture only.
+   */
+  let stereoSides = false;
   let mimeUsed = '';
   let audioBlob = null, audioUrl = null;
   let recStartedAt = null, timerId = null, elapsedSec = 0;
@@ -765,6 +800,8 @@
     version: 'none',
     /** ASR model that produced the current segments (recorded in exports) */
     model: '',
+    /** Capture had mic/system on separate channels → auto labels are meaningful */
+    stereoSides: false,
     segments: [],
     speakers: {},
     userEdited: false,
@@ -1015,6 +1052,73 @@
     return 44 + data;
   }
 
+  /**
+   * Per-channel RMS envelopes at DIARIZE.ENVELOPE_HOP_SEC resolution.
+   *
+   * Only the envelopes outlive the decoded buffer. Holding full per-channel
+   * Float32 data for a long meeting is not an option — 2 hours of 48 kHz stereo
+   * is ~2.8 GB, while both envelopes together are under 1 MB at a 50 ms hop.
+   *
+   * @returns {{hopSec:number,left:Float32Array,right:Float32Array}|null}
+   */
+  function computeChannelEnvelopes(buffer) {
+    if (!buffer || buffer.numberOfChannels < 2 || !buffer.length) return null;
+    const hop = Math.max(1, Math.round(DIARIZE.ENVELOPE_HOP_SEC * buffer.sampleRate));
+    const frames = Math.max(1, Math.ceil(buffer.length / hop));
+    const chans = [];
+    for (let c = 0; c < 2; c++) {
+      const data = buffer.getChannelData(c);
+      const env = new Float32Array(frames);
+      for (let f = 0; f < frames; f++) {
+        const start = f * hop;
+        const end = Math.min(data.length, start + hop);
+        let sum = 0;
+        for (let i = start; i < end; i++) sum += data[i] * data[i];
+        env[f] = end > start ? Math.sqrt(sum / (end - start)) : 0;
+      }
+      chans.push(env);
+    }
+    return { hopSec: hop / buffer.sampleRate, left: chans[0], right: chans[1] };
+  }
+
+  /**
+   * Attribute each stitched segment to a capture side by comparing mean channel
+   * energy over its time range. Louder mic → "me", louder system audio → "them".
+   *
+   * Within MARGIN_RATIO the two sides are too close to call (crosstalk, echo
+   * bleed, both parties talking) — those segments inherit the previous label
+   * instead of flip-flopping mid-turn.
+   *
+   * @returns {{ids: string[], confident: number}|null}
+   */
+  function attributeSegmentsByChannel(segments, env) {
+    if (!env || !segments || !segments.length) return null;
+    const meanOver = (arr, aSec, bSec) => {
+      const i0 = Math.max(0, Math.floor(aSec / env.hopSec));
+      const i1 = Math.min(arr.length, Math.max(i0 + 1, Math.ceil(bSec / env.hopSec)));
+      if (i1 <= i0) return 0;
+      let s = 0;
+      for (let i = i0; i < i1; i++) s += arr[i];
+      return s / (i1 - i0);
+    };
+
+    let prev = null;
+    let confident = 0;
+    const ids = segments.map(seg => {
+      const a = Number(seg.start) || 0;
+      const b = Math.max(a + DIARIZE.MIN_SEG_SEC, Number(seg.end) || a);
+      const l = meanOver(env.left, a, b);
+      const r = meanOver(env.right, a, b);
+      let id;
+      if (l > r * DIARIZE.MARGIN_RATIO) { id = 'me'; confident++; }
+      else if (r > l * DIARIZE.MARGIN_RATIO) { id = 'them'; confident++; }
+      else id = prev || (l >= r ? 'me' : 'them');
+      prev = id;
+      return id;
+    });
+    return { ids, confident };
+  }
+
   /** Mix multi-channel AudioBuffer to mono (average). */
   function mixToMonoBuffer(buffer) {
     if (buffer.numberOfChannels === 1) return buffer;
@@ -1221,6 +1325,16 @@
     }
 
     const durationSec = decoded.duration || knownDuration;
+
+    /*
+     * Channel envelopes must be taken HERE, while the decoded buffer still has
+     * both channels — the mono mix below is what Whisper needs, but it erases
+     * the mic/system separation. Only the small envelope arrays are retained.
+     */
+    const envelopes = (opts.stereoSides && decoded.numberOfChannels >= 2)
+      ? computeChannelEnvelopes(decoded)
+      : null;
+
     let workBuffer = decoded;
     let optimized = false;
 
@@ -1270,7 +1384,8 @@
           chunked: false,
           optimized,
           durationSec,
-          totalBytes: blob.size
+          totalBytes: blob.size,
+          envelopes
         };
       }
       // Force chunk path below
@@ -1326,7 +1441,8 @@
       chunked: parts.length > 1,
       optimized,
       durationSec,
-      totalBytes
+      totalBytes,
+      envelopes
     };
   }
 
@@ -1402,38 +1518,42 @@
     }
   }
 
+  // Unlabeled segments emit a bare timestamped line rather than an invented name
   function getActiveTranscriptText() {
     return transcriptState.segments.map(s => {
-      const sp = transcriptState.speakers[s.speakerId] || `Speaker ${s.speakerId}`;
+      const sp = speakerName(s.speakerId);
       const t = fmtTime(s.start);
-      return `[${t}] ${sp}: ${s.text}`;
+      return sp ? `[${t}] ${sp}: ${s.text}` : `[${t}] ${s.text}`;
     }).join('\n');
   }
 
   function getPlainTranscriptText() {
     return transcriptState.segments.map(s => {
-      const sp = transcriptState.speakers[s.speakerId] || `Speaker ${s.speakerId}`;
-      return `${sp}: ${s.text}`;
+      const sp = speakerName(s.speakerId);
+      return sp ? `${sp}: ${s.text}` : s.text;
     }).join('\n\n');
   }
 
   /**
-   * Basic speaker labeling: alternate speaker on silence gaps.
-   * Good enough for 2-party calls; users can rename + reassign per segment.
+   * Attach speaker ids to raw segments.
+   *
+   * Channel-energy attribution is the ONLY source of automatic labels. When it
+   * is unavailable (mobile capture, a pre-stereo recording, or a mono decode)
+   * segments carry no speaker at all and render as plain timestamped lines.
+   *
+   * This replaces a heuristic that alternated "Speaker 1"/"Speaker 2" on every
+   * silence gap over 1.8 s. That signal did not exist — it was pause timing,
+   * not voices — so it labelled an eight-person meeting as two people and
+   * attributed lines to speakers who never said them. Unlabeled is more
+   * truthful than confidently wrong.
    */
-  function assignSpeakers(rawSegments) {
+  function assignSpeakers(rawSegments, autoIds) {
     const speakers = {};
-    let speaker = 1;
-    let prevEnd = null;
-    const segments = rawSegments.map(raw => {
-      if (prevEnd != null && (raw.start - prevEnd) >= SPEAKER_GAP_SEC) {
-        speaker = speaker === 1 ? 2 : 1;
+    const segments = rawSegments.map((raw, i) => {
+      const speakerId = (autoIds && autoIds[i]) || null;
+      if (speakerId && !speakers[speakerId]) {
+        speakers[speakerId] = SIDE_SPEAKERS[speakerId] || speakerId;
       }
-      // Long monologues can introduce Speaker 3+ after returning from a long gap
-      // once we already have 2 speakers and gap is very large — keep toggle simple.
-      const speakerId = String(speaker);
-      if (!speakers[speakerId]) speakers[speakerId] = `Speaker ${speakerId}`;
-      prevEnd = raw.end || raw.start;
       return {
         id: uid(),
         start: raw.start,
@@ -1442,13 +1562,43 @@
         text: raw.text
       };
     });
-    // Ensure at least Speaker 1 exists for empty-edge cases
-    if (!Object.keys(speakers).length) speakers['1'] = 'Speaker 1';
     return { segments, speakers };
   }
 
-  function applyTranscript(rawSegments, version, model) {
-    const { segments, speakers } = assignSpeakers(rawSegments);
+  /** Stable display order: Me, Them, then any user-created speakers. */
+  function orderedSpeakerIds() {
+    const rank = id => (id === 'me' ? 0 : id === 'them' ? 1 : 2);
+    return Object.keys(transcriptState.speakers)
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  }
+
+  function speakerColor(id) {
+    const i = orderedSpeakerIds().indexOf(id);
+    return SPEAKER_COLORS[(i < 0 ? 0 : i) % SPEAKER_COLORS.length];
+  }
+
+  function speakerName(id) {
+    if (!id) return '';
+    return transcriptState.speakers[id] || SIDE_SPEAKERS[id] || id;
+  }
+
+  /**
+   * Plain-language statement of where speaker labels came from, for exports.
+   * Never claim more than the signal supports.
+   */
+  function speakerProvenance() {
+    if (!Object.keys(transcriptState.speakers).length) {
+      return 'not labeled (Splice does not identify individual speakers)';
+    }
+    if (transcriptState.stereoSides) {
+      return '"Me" = this device\'s microphone, "Them" = meeting/system audio. ' +
+        'Attributed by capture channel, not by voice — everyone on this microphone is "Me".';
+    }
+    return 'manually assigned';
+  }
+
+  function applyTranscript(rawSegments, version, model, autoIds) {
+    const { segments, speakers } = assignSpeakers(rawSegments, autoIds);
     // Preserve renames if speaker ids already known
     const mergedSpeakers = { ...speakers };
     Object.keys(transcriptState.speakers).forEach(id => {
@@ -1488,6 +1638,8 @@
     const hasSegs = transcriptState.segments.length > 0;
     // Speakers only on final high-accuracy transcript (user decision: name sparingly there)
     const isFinal = transcriptState.version === 'final';
+    // No labels at all unless channel attribution produced some (or the user added them)
+    const hasSpeakers = Object.keys(transcriptState.speakers).length > 0;
     const isDraft = transcriptState.version === 'draft';
     // Animate speaker UI only when first revealing final (not on rename re-renders)
     const revealingSpeakers = isFinal && lastRenderedTxVersion !== 'final';
@@ -1514,13 +1666,13 @@
       return;
     }
 
-    // ── Speaker legend: FINAL only (completely hidden during DRAFT) ─────
-    if (isFinal) {
+    // ── Speaker legend: FINAL only, and only when labels actually exist ──
+    if (isFinal && hasSpeakers) {
       bar.classList.remove('hidden');
       bar.classList.toggle('speakers-enter', revealingSpeakers);
-      bar.innerHTML = Object.keys(transcriptState.speakers).sort().map((id, i) => {
-        const color = SPEAKER_COLORS[(Number(id) - 1) % SPEAKER_COLORS.length] || SPEAKER_COLORS[i % SPEAKER_COLORS.length];
-        const name = transcriptState.speakers[id];
+      bar.innerHTML = orderedSpeakerIds().map(id => {
+        const color = speakerColor(id);
+        const name = speakerName(id);
         return `<span class="speaker-chip" title="Click pencil to rename">
           <span class="speaker-dot" style="background:${color}"></span>
           <span>${escapeHtml(name)}</span>
@@ -1530,15 +1682,13 @@
         </span>`;
       }).join('');
     } else {
-      // DRAFT (or other non-final): no speaker chrome at all
+      // DRAFT, or a capture with no real speaker signal: no speaker chrome at all
       bar.classList.add('hidden');
       bar.classList.remove('speakers-enter');
       bar.innerHTML = '';
     }
 
-    const speakerIds = isFinal
-      ? Object.keys(transcriptState.speakers).sort((a, b) => Number(a) - Number(b))
-      : [];
+    const speakerIds = (isFinal && hasSpeakers) ? orderedSpeakerIds() : [];
 
     // ── Segment rows: compact text-only (draft) vs full speaker UI (final) ─
     host.innerHTML = transcriptState.segments.map(seg => {
@@ -1556,25 +1706,32 @@
         </div>`;
       }
 
-      // Final: comfortable layout with colored speaker label + reassign
-      const color = SPEAKER_COLORS[(Number(seg.speakerId) - 1) % SPEAKER_COLORS.length];
-      const name = transcriptState.speakers[seg.speakerId] || `Speaker ${seg.speakerId}`;
-      const speakerOpts = speakerIds.map(id =>
-        `<option value="${id}"${id === seg.speakerId ? ' selected' : ''}>${escapeHtml(transcriptState.speakers[id])}</option>`
-      ).join('') + `<option value="__new__">+ New speaker</option>`;
-      return `<div class="seg seg-final" data-id="${seg.id}">
-        <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
-        <div class="seg-body">
-          <div class="seg-meta">
+      // Final: comfortable layout. Speaker chrome only when a label really exists.
+      const name = speakerName(seg.speakerId);
+      let metaHtml = '';
+      if (seg.speakerId && hasSpeakers) {
+        const color = speakerColor(seg.speakerId);
+        const speakerOpts = speakerIds.map(id =>
+          `<option value="${id}"${id === seg.speakerId ? ' selected' : ''}>${escapeHtml(speakerName(id))}</option>`
+        ).join('') + `<option value="__new__">+ New speaker</option>`;
+        metaHtml = `<div class="seg-meta">
             <button type="button" class="seg-speaker" style="color:${color}" onclick="renameSpeaker('${seg.speakerId}')" title="Rename speaker">
               ${escapeHtml(name)}
             </button>
             <select class="seg-reassign" onchange="reassignSpeaker('${seg.id}', this.value)" title="Change speaker for this segment" aria-label="Reassign speaker">
               ${speakerOpts}
             </select>
-          </div>
+          </div>`;
+      }
+      const aria = name
+        ? `Editable transcript segment, ${escapeHtml(name)}`
+        : `Editable transcript segment at ${t}`;
+      return `<div class="seg seg-final" data-id="${seg.id}">
+        <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
+        <div class="seg-body">
+          ${metaHtml}
           <textarea class="seg-text" rows="2" oninput="editSegmentText('${seg.id}', this.value, this)"
-            aria-label="Editable transcript segment, ${escapeHtml(name)}">${escapeHtml(seg.text)}</textarea>
+            aria-label="${aria}">${escapeHtml(seg.text)}</textarea>
         </div>
       </div>`;
     }).join('');
@@ -1617,7 +1774,7 @@
   };
 
   window.renameSpeaker = function (speakerId) {
-    const current = transcriptState.speakers[speakerId] || `Speaker ${speakerId}`;
+    const current = speakerName(speakerId);
     const next = prompt('Rename speaker (updates all of their segments):', current);
     if (next == null) return;
     const name = next.trim();
@@ -1632,9 +1789,10 @@
     if (!seg) return;
     let speakerId = value;
     if (value === '__new__') {
-      const ids = Object.keys(transcriptState.speakers).map(Number).filter(n => !isNaN(n));
-      const n = (ids.length ? Math.max(...ids) : 0) + 1;
-      speakerId = String(n);
+      // Ids are opaque strings now ('me' / 'them' / 's3' …), so pick the first free slot
+      let n = Object.keys(transcriptState.speakers).length + 1;
+      while (transcriptState.speakers['s' + n]) n++;
+      speakerId = 's' + n;
       const label = prompt('Name for new speaker:', `Speaker ${n}`);
       transcriptState.speakers[speakerId] = (label && label.trim()) || `Speaker ${n}`;
     }
@@ -1729,13 +1887,33 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     audioCtx = new AC();
     const dest = audioCtx.createMediaStreamDestination();
-    audioCtx.createMediaStreamSource(new MediaStream([sysTracks[0]])).connect(dest);
-    audioCtx.createMediaStreamSource(micStream).connect(dest);
+
+    /*
+     * Stereo split instead of a summed mono mix: mic → LEFT (0),
+     * system/tab audio → RIGHT (1). Both sides stay fully audible in the
+     * downloaded file, and the final pass can tell who spoke by comparing
+     * per-channel energy. Summing the two sources destroyed that information.
+     *
+     * ChannelMergerNode inputs are single-channel by spec, so a stereo tab
+     * source is downmixed to mono on the way into the right channel — which is
+     * what we want here.
+     *
+     * Mic echo cancellation (on by default in getUserMedia) matters for
+     * accuracy: it keeps far-end audio from bleeding into the left channel and
+     * blurring the two sides. Do not disable it.
+     */
+    const merger = audioCtx.createChannelMerger(2);
+    audioCtx.createMediaStreamSource(micStream).connect(merger, 0, 0);
+    audioCtx.createMediaStreamSource(new MediaStream([sysTracks[0]])).connect(merger, 0, 1);
+    merger.connect(dest);
+    stereoSides = true;
     setupRec(dest.stream);
   }
 
   async function startMobile() {
     await acquireWakeLock();
+    // Single microphone: nothing to separate, so no automatic speaker labels.
+    stereoSides = false;
     try {
       captSt = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
@@ -1760,6 +1938,9 @@
     // Reset transcript for new session; clear per-meeting draft rate-limit flag
     draftRateLimitedThisMeeting = false;
     resetTranscriptState(false);
+    // Recorded per session so the final pass knows the channel layout, and so
+    // exports can state where speaker labels came from.
+    transcriptState.stereoSides = stereoSides;
     transcriptState.meetingStartedAt = new Date();
     recStartedAt = Date.now();
     elapsedSec = 0;
@@ -2017,6 +2198,7 @@
         chunkMin: finalChunkMin,
         forceChunk: forceFinalChunk,
         durationSec: transcriptState.durationSec || elapsedSec,
+        stereoSides: transcriptState.stereoSides,
         onProgress: (msg) => setTxStatus('busy', msg)
       });
 
@@ -2076,10 +2258,18 @@
         );
       }
 
-      applyTranscript(rawSegments, 'final', MODELS.final);
+      // Channel-energy attribution: desktop stereo captures only, null otherwise
+      const auto = attributeSegmentsByChannel(rawSegments, prepared.envelopes);
+      applyTranscript(rawSegments, 'final', MODELS.final, auto && auto.ids);
       let okMsg = 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.';
       if (prepared.chunked) {
         okMsg = 'Final transcript ready (' + n + ' chunks stitched). Edit names, numbers, and technical terms before summarizing or exporting.';
+      }
+      if (auto) {
+        const pct = Math.round((auto.confident / auto.ids.length) * 100);
+        okMsg += ' Speakers auto-labelled Me / Them from the mic and meeting-audio channels (' +
+          pct + '% of lines clearly on one side; the rest follow the previous speaker). ' +
+          'Rename or reassign any line that looks wrong.';
       }
       // Surface filter activity so thresholds can be judged against real meetings
       const notes = [];
@@ -2132,6 +2322,7 @@
       'App: Splice ' + APP_VERSION,
       'Model: ' + (transcriptState.model || '(unknown)'),
       'Transcript: ' + transcriptState.version + (transcriptState.userEdited ? ' (edited)' : ''),
+      'Speakers: ' + speakerProvenance(),
       'Meeting: ' + (el('meeting-title').value.trim() || '(untitled)'),
       'Recorded: ' + (transcriptState.meetingStartedAt ? transcriptState.meetingStartedAt.toISOString() : ''),
       'Duration: ' + fmtTime(transcriptState.durationSec || elapsedSec),
@@ -2269,12 +2460,16 @@
       txVersion: transcriptState.version + (transcriptState.userEdited ? ' (user-edited)' : ''),
       appVersion: 'Splice ' + APP_VERSION,
       model: transcriptState.model || '(unknown)',
+      speakers: speakerProvenance(),
       summaryMode: modeLabel
     };
 
     const transcriptHtml = transcriptState.segments.map(s => {
-      const sp = escapeHtml(transcriptState.speakers[s.speakerId] || s.speakerId);
-      return `<p style="margin:0 0 10px 0;"><strong>[${fmtTime(s.start)}] ${sp}:</strong> ${escapeHtml(s.text)}</p>`;
+      const sp = speakerName(s.speakerId);
+      const head = sp
+        ? `[${fmtTime(s.start)}] ${escapeHtml(sp)}:`
+        : `[${fmtTime(s.start)}]`;
+      return `<p style="margin:0 0 10px 0;"><strong>${head}</strong> ${escapeHtml(s.text)}</p>`;
     }).join('');
 
     const summaryHtml = transcriptState.summaryMarkdown
@@ -2304,6 +2499,7 @@
     <div><strong>Transcript version:</strong> ${escapeHtml(meta.txVersion)}</div>
     <div><strong>Summary mode:</strong> ${escapeHtml(meta.summaryMode)}</div>
     <div><strong>Transcription model:</strong> ${escapeHtml(meta.model)}</div>
+    <div><strong>Speaker labels:</strong> ${escapeHtml(meta.speakers)}</div>
     <div><strong>Generated by:</strong> ${escapeHtml(meta.appVersion)}</div>
   </div>
   <h2>Summary / Action Items</h2>
@@ -2347,8 +2543,9 @@
    * Pure helpers only — no app state is reachable or mutable through here.
    */
   window.__splice = {
-    APP_VERSION, MODELS, ASR_PROMPT, TX_FILTER,
-    promptLeakScore, segmentDropReason, bufferHasSpeech
+    APP_VERSION, MODELS, ASR_PROMPT, TX_FILTER, DIARIZE,
+    promptLeakScore, segmentDropReason, bufferHasSpeech,
+    computeChannelEnvelopes, attributeSegmentsByChannel
   };
 
   // ── Init ──────────────────────────────────────────────────────────────
