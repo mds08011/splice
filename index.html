@@ -658,6 +658,43 @@
     FINAL_TX.SAFE_SIZE_BYTES / (FINAL_TX.TARGET_SAMPLE_RATE * FINAL_TX.TARGET_CHANNELS * FINAL_TX.BYTES_PER_SAMPLE)
   );
 
+  /** App version — recorded in exports so transcript quality can be traced later. */
+  const APP_VERSION = '1.1.0';
+  /** Whisper model per pass. Recorded on the transcript for the same reason. */
+  const MODELS = {
+    final: 'whisper-large-v3',
+    draft: 'whisper-large-v3-turbo'
+  };
+
+  /**
+   * Jargon-biasing text sent as Whisper's `prompt` parameter. This is a STYLE
+   * hint, not an instruction — and Whisper emits it verbatim as a transcript
+   * line when a chunk contains little or no speech. It is therefore also the
+   * reference text for the prompt-leak filter. Single source of truth: edit the
+   * jargon here and the filter follows automatically.
+   */
+  const ASR_PROMPT =
+    'Water and wastewater construction meeting. Terms may include SCADA, lift station, ' +
+    'force main, manhole, RFI, submittal, MOP, clarifier, digester, CIP, gpm, psi, mgd.';
+
+  /**
+   * Hallucination / prompt-leak thresholds. Tunable from field use; defaults are
+   * Whisper's own decoding thresholds wherever an equivalent exists.
+   *
+   * Every metadata check is skipped when its field is absent, so a response
+   * without segment metadata degrades to "keep everything" — the filter can
+   * never silently eat real speech just because the backend got quieter.
+   */
+  const TX_FILTER = {
+    NO_SPEECH_PROB_HARD: 0.9,      // drop regardless of logprob (near-certain silence)
+    NO_SPEECH_PROB_MAX: 0.6,       // Whisper no_speech_threshold …
+    AVG_LOGPROB_MIN: -1.0,         // … only drops when combined with logprob_threshold
+    COMPRESSION_RATIO_MAX: 2.4,    // Whisper compression_ratio_threshold (repetition loops)
+    PROMPT_SIMILARITY_MAX: 0.8,    // 0–1 similarity to ASR_PROMPT → treat the line as a leak
+    SILENT_FRAME_SEC: 1.0,         // silence-gate frame size
+    SILENT_FRAME_RMS: 0.005        // ≈ -46 dBFS; chunk is skipped if NO frame clears this
+  };
+
   // ── Settings (migrate old SiteScribe keys → Splice) ───────────────────
   function loadStored(key, legacyKey) {
     return localStorage.getItem(key) || (legacyKey ? localStorage.getItem(legacyKey) : null) || '';
@@ -726,6 +763,8 @@
   const transcriptState = {
     phase: 'idle',
     version: 'none',
+    /** ASR model that produced the current segments (recorded in exports) */
+    model: '',
     segments: [],
     speakers: {},
     userEdited: false,
@@ -755,32 +794,165 @@
       msg.includes('tokens per minute');
   }
 
+  // ── Hallucination / prompt-leak filtering ─────────────────────────────
+  /**
+   * Whisper reproduces the biasing `prompt` verbatim (or partially) when a
+   * chunk has little or no speech — it showed up roughly once per silent
+   * stretch in a real 26-minute meeting. Three layered defenses:
+   *
+   *   1. Segment metadata from verbose_json (no_speech_prob / avg_logprob /
+   *      compression_ratio) — see segmentDropReason().
+   *   2. Fuzzy similarity of each output line to ASR_PROMPT — catches partial
+   *      leaks like "force main, manhole, RFI, submittal" that exact string
+   *      matching misses entirely.
+   *   3. Near-silent chunks are never uploaded — see bufferHasSpeech(). This
+   *      removes the trigger rather than filtering the symptom.
+   */
+  function normalizeForCompare(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function bigramsOf(tokens) {
+    const out = [];
+    for (let i = 0; i < tokens.length - 1; i++) out.push(tokens[i] + ' ' + tokens[i + 1]);
+    return out;
+  }
+
+  /** Normalized Levenshtein similarity, 1 = identical. Callers cap input length. */
+  function levenshteinSimilarity(a, b) {
+    if (a === b) return 1;
+    if (!a.length || !b.length) return 0;
+    let prev = new Array(b.length + 1);
+    let cur = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      const ca = a.charCodeAt(i - 1);
+      for (let j = 1; j <= b.length; j++) {
+        const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      const swap = prev; prev = cur; cur = swap;
+    }
+    return 1 - (prev[b.length] / Math.max(a.length, b.length));
+  }
+
+  /** Prompt reference forms, derived once from ASR_PROMPT. */
+  const PROMPT_REF = (function () {
+    const norm = normalizeForCompare(ASR_PROMPT);
+    const tokens = norm ? norm.split(' ') : [];
+    const sentences = ASR_PROMPT.split(/[.;]+/)
+      .map(normalizeForCompare)
+      .filter(s => s.length > 8);
+    if (norm) sentences.push(norm);
+    return { norm, bigrams: new Set(bigramsOf(tokens)), sentences };
+  })();
+
+  /**
+   * 0–1 score of how much a transcript line looks like the biasing prompt.
+   *
+   * Bigram containment (fraction of the LINE's bigrams that appear in the
+   * prompt) is the key metric: a verbatim fragment scores ~1.0, while genuine
+   * speech that merely uses the jargon scores low — someone actually talking
+   * about a lift station shares vocabulary with the prompt but almost no word
+   * pairs. Levenshtein covers whole-line leaks and near-verbatim restatements.
+   */
+  function promptLeakScore(text) {
+    const norm = normalizeForCompare(text);
+    if (!norm) return 0;
+    const bg = bigramsOf(norm.split(' '));
+    if (bg.length < 2) {
+      // Too short for bigram evidence — only an exact match counts, so a real
+      // one-word utterance ("SCADA.") is never mistaken for a leak.
+      return PROMPT_REF.sentences.indexOf(norm) >= 0 ? 1 : 0;
+    }
+    let hits = 0;
+    for (const g of bg) if (PROMPT_REF.bigrams.has(g)) hits++;
+    let score = hits / bg.length;
+    // Whole-line similarity against each prompt sentence (prompt is short, so cheap)
+    if (norm.length <= 400) {
+      for (const s of PROMPT_REF.sentences) {
+        const sim = levenshteinSimilarity(norm, s);
+        if (sim > score) score = sim;
+      }
+    }
+    return score;
+  }
+
+  /**
+   * Decide whether a raw Whisper segment is hallucinated output.
+   * @param {object|null} raw  verbose_json segment (null when only plain text came back)
+   * @param {string} text      trimmed segment text
+   * @returns {string|null}    human-readable drop reason, or null to keep
+   */
+  function segmentDropReason(raw, text) {
+    const nsp = Number(raw && raw.no_speech_prob);
+    const alp = Number(raw && raw.avg_logprob);
+    const cr = Number(raw && raw.compression_ratio);
+
+    if (Number.isFinite(nsp) && nsp >= TX_FILTER.NO_SPEECH_PROB_HARD) {
+      return 'no_speech_prob ' + nsp.toFixed(2);
+    }
+    if (Number.isFinite(nsp) && nsp > TX_FILTER.NO_SPEECH_PROB_MAX &&
+        Number.isFinite(alp) && alp < TX_FILTER.AVG_LOGPROB_MIN) {
+      return 'no_speech_prob ' + nsp.toFixed(2) + ' + avg_logprob ' + alp.toFixed(2);
+    }
+    if (Number.isFinite(cr) && cr > TX_FILTER.COMPRESSION_RATIO_MAX) {
+      return 'compression_ratio ' + cr.toFixed(2);
+    }
+    const leak = promptLeakScore(text);
+    if (leak >= TX_FILTER.PROMPT_SIMILARITY_MAX) {
+      return 'prompt leak ' + leak.toFixed(2);
+    }
+    return null;
+  }
+
+  /**
+   * True when at least one frame clears the RMS floor.
+   *
+   * Frame maximum, not whole-buffer mean: a 10-minute chunk holding 5 seconds
+   * of speech must still be uploaded. Only genuinely dead air is skipped.
+   */
+  function bufferHasSpeech(buffer, frameSec, rmsFloor) {
+    if (!buffer || !buffer.length) return false;
+    const data = buffer.getChannelData(0);
+    const frame = Math.max(1, Math.floor((frameSec || TX_FILTER.SILENT_FRAME_SEC) * buffer.sampleRate));
+    const floor = rmsFloor || TX_FILTER.SILENT_FRAME_RMS;
+    for (let i = 0; i < data.length; i += frame) {
+      const end = Math.min(data.length, i + frame);
+      let sum = 0;
+      for (let j = i; j < end; j++) sum += data[j] * data[j];
+      if (Math.sqrt(sum / (end - i)) >= floor) return true;
+    }
+    return false;
+  }
+
   // ── Pluggable transcription backend ───────────────────────────────────
   const TranscriptionBackend = {
     /**
      * Batch or draft STT via Groq Whisper.
      * @param {Blob} blob
      * @param {{ mode: 'draft'|'final', signal?: AbortSignal }} opts
-     * @returns {Promise<{ text: string, segments: Array<{start,end,text}> }>}
+     * @returns {Promise<{ text: string, segments: Array<{start,end,text}>, dropped: number, model: string }>}
      */
     async transcribe(blob, opts = {}) {
       const mode = opts.mode || 'final';
+      const model = mode === 'final' ? MODELS.final : MODELS.draft;
       const formData = new FormData();
       const ext = extOf(blob.type || mimeUsed || 'audio/webm');
       formData.append('file', blob, `audio.${ext === 'm4a' ? 'm4a' : ext}`);
       // Final pass: whisper-large-v3 for max accuracy; draft uses turbo for lower lag/cost
-      formData.append('model', mode === 'final' ? 'whisper-large-v3' : 'whisper-large-v3-turbo');
+      formData.append('model', model);
+      // verbose_json also carries the per-segment confidence metadata the
+      // hallucination filter needs (no_speech_prob / avg_logprob / compression_ratio)
       formData.append('response_format', 'verbose_json');
       // Segment timestamps power click-to-seek (segment granularity adds no extra latency)
       formData.append('timestamp_granularities[]', 'segment');
       formData.append('temperature', '0');
       formData.append('language', 'en');
-      // Style/context prompt (not instructions) — helps ASR with field terminology
-      formData.append(
-        'prompt',
-        'Water and wastewater construction meeting. Terms may include SCADA, lift station, ' +
-        'force main, manhole, RFI, submittal, MOP, clarifier, digester, CIP, gpm, psi, mgd.'
-      );
+      // Style/context prompt (not instructions) — helps ASR with field terminology.
+      // Leaks into output during silence; filtered below against the same constant.
+      formData.append('prompt', ASR_PROMPT);
 
       const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
@@ -794,18 +966,33 @@
       }
       const data = await res.json();
       const text = data.text || '';
-      let segments = Array.isArray(data.segments)
-        ? data.segments.map(s => ({
-            start: Number(s.start) || 0,
-            end: Number(s.end) || 0,
-            text: (s.text || '').trim()
-          })).filter(s => s.text)
-        : [];
-      // Fallback: single segment if API returns plain text only
-      if (!segments.length && text) {
-        segments = [{ start: 0, end: 0, text: text.trim() }];
+      let segments = [];
+      const dropped = [];
+
+      if (Array.isArray(data.segments)) {
+        for (const s of data.segments) {
+          const t = (s.text || '').trim();
+          if (!t) continue;
+          const reason = segmentDropReason(s, t);
+          if (reason) { dropped.push({ text: t, reason }); continue; }
+          segments.push({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: t });
+        }
       }
-      return { text, segments };
+
+      // Fallback: single segment if the API returned plain text only. No segment
+      // metadata to judge, so only the prompt-leak check applies.
+      if (!segments.length && !dropped.length && text.trim()) {
+        const t = text.trim();
+        const reason = segmentDropReason(null, t);
+        if (reason) dropped.push({ text: t, reason });
+        else segments = [{ start: 0, end: 0, text: t }];
+      }
+
+      // Logged (not silently discarded) so thresholds can be tuned from field use
+      if (dropped.length) {
+        console.debug('[splice] dropped ' + dropped.length + ' hallucinated segment(s):', dropped);
+      }
+      return { text, segments, dropped: dropped.length, model };
     }
   };
 
@@ -976,8 +1163,15 @@
 
   /**
    * Build API-ready parts for the final pass.
+   *
+   * Each part carries `silent`: true when no frame of that slice clears the RMS
+   * floor. Silent parts are never uploaded (see runFinalTranscription) — this
+   * saves the API call and removes the condition that makes Whisper hallucinate
+   * the biasing prompt. Parts we never decoded are marked `silent: false`
+   * (unknown, so always uploaded).
+   *
    * @returns {Promise<{
-   *   parts: Array<{ blob: Blob, offsetSec: number }>,
+   *   parts: Array<{ blob: Blob, offsetSec: number, silent: boolean }>,
    *   chunked: boolean,
    *   optimized: boolean,
    *   durationSec: number,
@@ -1000,7 +1194,7 @@
     const originalOkDuration = knownDuration === 0 || knownDuration <= FINAL_TX.MAX_SINGLE_DURATION_SEC;
     if (!compress && !forceChunk && originalOkSize && originalOkDuration) {
       return {
-        parts: [{ blob: sourceBlob, offsetSec: 0 }],
+        parts: [{ blob: sourceBlob, offsetSec: 0, silent: false }],
         chunked: false,
         optimized: false,
         durationSec: knownDuration,
@@ -1016,7 +1210,7 @@
       // If we cannot decode and original already fits, fall back to single original upload
       if (originalOkSize && !forceChunk) {
         return {
-          parts: [{ blob: sourceBlob, offsetSec: 0 }],
+          parts: [{ blob: sourceBlob, offsetSec: 0, silent: false }],
           chunked: false,
           optimized: false,
           durationSec: knownDuration,
@@ -1071,7 +1265,8 @@
       // Safety: if encoded single blob still too large, fall through to chunking
       if (blob.size <= FINAL_TX.SAFE_SIZE_BYTES && !forceChunk) {
         return {
-          parts: [{ blob, offsetSec: 0 }],
+          // Only judged when we actually re-encoded; the passthrough blob is unknown
+          parts: [{ blob, offsetSec: 0, silent: optimized ? !bufferHasSpeech(workBuffer) : false }],
           chunked: false,
           optimized,
           durationSec,
@@ -1114,10 +1309,14 @@
           const absStart = w.startSec + sw.startSec;
           const absEnd = w.startSec + sw.endSec;
           const subSlice = sliceAudioBuffer(workBuffer, absStart, absEnd);
-          parts.push({ blob: audioBufferToWavBlob(subSlice), offsetSec: absStart });
+          parts.push({
+            blob: audioBufferToWavBlob(subSlice),
+            offsetSec: absStart,
+            silent: !bufferHasSpeech(subSlice)
+          });
         }
       } else {
-        parts.push({ blob, offsetSec: w.offsetSec });
+        parts.push({ blob, offsetSec: w.offsetSec, silent: !bufferHasSpeech(sliced) });
       }
     }
 
@@ -1248,7 +1447,7 @@
     return { segments, speakers };
   }
 
-  function applyTranscript(rawSegments, version) {
+  function applyTranscript(rawSegments, version, model) {
     const { segments, speakers } = assignSpeakers(rawSegments);
     // Preserve renames if speaker ids already known
     const mergedSpeakers = { ...speakers };
@@ -1258,6 +1457,7 @@
     transcriptState.segments = segments;
     transcriptState.speakers = mergedSpeakers;
     transcriptState.version = version;
+    transcriptState.model = model || '';
     transcriptState.userEdited = false;
     transcriptState.phase = 'ready';
     renderTranscript();
@@ -1675,6 +1875,7 @@
   function resetTranscriptState(full) {
     transcriptState.phase = 'idle';
     transcriptState.version = 'none';
+    transcriptState.model = '';
     transcriptState.segments = [];
     transcriptState.speakers = {};
     transcriptState.userEdited = false;
@@ -1762,7 +1963,7 @@
         setTxStatus('warn', 'Draft update skipped — you have local edits. Final pass after stop will still run.');
         return;
       }
-      applyTranscript(result.segments, 'draft');
+      applyTranscript(result.segments, 'draft', MODELS.draft);
       setTxStatus('warn', 'Draft transcript (near-live, lower accuracy). Final high-accuracy version replaces this when recording stops.');
     } catch (e) {
       if (e.name === 'AbortError') return;
@@ -1824,44 +2025,67 @@
 
       let rawSegments = [];
       const failedChunks = [];
+      let droppedSegments = 0;
+      let skippedSilent = 0;
 
       if (n === 1 && !prepared.chunked) {
+        if (prepared.parts[0].silent) {
+          throw new Error('No speech detected in this recording — nothing to transcribe.');
+        }
         setTxStatus('busy', 'Processing final high-accuracy transcript…');
         const result = await transcribeFinalPart(prepared.parts[0].blob, 1);
         rawSegments = result.segments || [];
+        droppedSegments += result.dropped || 0;
       } else {
         const chunkResults = [];
         for (let i = 0; i < n; i++) {
+          const part = prepared.parts[i];
+          // Near-silent chunk: skip the upload entirely. Saves an API call and
+          // removes the trigger for prompt-text hallucination.
+          if (part.silent) {
+            skippedSilent++;
+            chunkResults.push({ offsetSec: part.offsetSec, segments: [] });
+            continue;
+          }
           setTxStatus('busy', 'Processing final transcript… chunk ' + (i + 1) + ' of ' + n);
           try {
-            const result = await transcribeFinalPart(prepared.parts[i].blob, 1);
+            const result = await transcribeFinalPart(part.blob, 1);
             chunkResults.push({
-              offsetSec: prepared.parts[i].offsetSec,
+              offsetSec: part.offsetSec,
               segments: result.segments || []
             });
+            droppedSegments += result.dropped || 0;
           } catch (chunkErr) {
             console.error('Final chunk ' + (i + 1) + ' failed:', chunkErr);
             failedChunks.push(i + 1);
             // Leave a gap; continue so the rest of the meeting is not lost
-            chunkResults.push({ offsetSec: prepared.parts[i].offsetSec, segments: [] });
+            chunkResults.push({ offsetSec: part.offsetSec, segments: [] });
           }
         }
         rawSegments = stitchChunkSegments(chunkResults, FINAL_TX.OVERLAP_SEC);
       }
 
       if (!rawSegments.length) {
+        if (failedChunks.length) {
+          throw new Error('All chunks failed (e.g. rate limit or network). Wait a moment and use “Run final transcription” again.');
+        }
         throw new Error(
-          failedChunks.length
-            ? 'All chunks failed (e.g. rate limit or network). Wait a moment and use “Run final transcription” again.'
+          skippedSilent === n
+            ? 'No speech detected in this recording — nothing to transcribe.'
             : 'Transcription returned no text.'
         );
       }
 
-      applyTranscript(rawSegments, 'final');
+      applyTranscript(rawSegments, 'final', MODELS.final);
       let okMsg = 'Final high-accuracy transcript ready. Edit names, numbers, and technical terms before summarizing or exporting.';
       if (prepared.chunked) {
         okMsg = 'Final transcript ready (' + n + ' chunks stitched). Edit names, numbers, and technical terms before summarizing or exporting.';
       }
+      // Surface filter activity so thresholds can be judged against real meetings
+      const notes = [];
+      if (skippedSilent) notes.push(skippedSilent + ' silent chunk' + (skippedSilent === 1 ? '' : 's') + ' skipped');
+      if (droppedSegments) notes.push(droppedSegments + ' hallucinated line' + (droppedSegments === 1 ? '' : 's') + ' filtered');
+      if (notes.length) okMsg += ' (' + notes.join(', ') + '.)';
       if (failedChunks.length) {
         setTxStatus(
           'warn',
@@ -1903,7 +2127,11 @@
     // Raw download always reflects the on-screen version (prefer final after stop)
     const header = [
       'Splice Transcript',
-      'Version: ' + transcriptState.version + (transcriptState.userEdited ? ' (edited)' : ''),
+      // App version + model instead of just "final" — makes transcript quality
+      // traceable to a specific build and ASR model after the fact
+      'App: Splice ' + APP_VERSION,
+      'Model: ' + (transcriptState.model || '(unknown)'),
+      'Transcript: ' + transcriptState.version + (transcriptState.userEdited ? ' (edited)' : ''),
       'Meeting: ' + (el('meeting-title').value.trim() || '(untitled)'),
       'Recorded: ' + (transcriptState.meetingStartedAt ? transcriptState.meetingStartedAt.toISOString() : ''),
       'Duration: ' + fmtTime(transcriptState.durationSec || elapsedSec),
@@ -2039,6 +2267,8 @@
         : new Date().toLocaleString(),
       duration: fmtTime(transcriptState.durationSec || elapsedSec),
       txVersion: transcriptState.version + (transcriptState.userEdited ? ' (user-edited)' : ''),
+      appVersion: 'Splice ' + APP_VERSION,
+      model: transcriptState.model || '(unknown)',
       summaryMode: modeLabel
     };
 
@@ -2073,7 +2303,8 @@
     <div><strong>Duration:</strong> ${escapeHtml(meta.duration)}</div>
     <div><strong>Transcript version:</strong> ${escapeHtml(meta.txVersion)}</div>
     <div><strong>Summary mode:</strong> ${escapeHtml(meta.summaryMode)}</div>
-    <div><strong>Generated by:</strong> Splice</div>
+    <div><strong>Transcription model:</strong> ${escapeHtml(meta.model)}</div>
+    <div><strong>Generated by:</strong> ${escapeHtml(meta.appVersion)}</div>
   </div>
   <h2>Summary / Action Items</h2>
   ${summaryHtml}
@@ -2107,6 +2338,17 @@
     a.download = `splice-record-${tsFile()}.doc`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  /**
+   * Filter internals exposed for synthetic tests and for tuning thresholds from
+   * the console against real field recordings, e.g.
+   *   __splice.TX_FILTER.PROMPT_SIMILARITY_MAX = 0.7
+   * Pure helpers only — no app state is reachable or mutable through here.
+   */
+  window.__splice = {
+    APP_VERSION, MODELS, ASR_PROMPT, TX_FILTER,
+    promptLeakScore, segmentDropReason, bufferHasSpeech
   };
 
   // ── Init ──────────────────────────────────────────────────────────────
