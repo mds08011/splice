@@ -211,23 +211,6 @@
     min-height: 28px; display: flex; align-items: center;
   }
   .seg-time:hover { text-decoration: underline; }
-  .seg-meta {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
-  }
-  /* Final-only: fade speaker controls in once when draft → final (not on rename re-renders) */
-  .segments.speakers-just-revealed .seg.seg-final .seg-meta {
-    animation: speakers-fade-in 0.3s ease both;
-  }
-  .seg-speaker {
-    font-size: 12px; font-weight: 600; border: none; background: transparent;
-    color: var(--tx); padding: 0; cursor: pointer; text-align: left;
-  }
-  .seg-speaker:hover { color: var(--blu); }
-  .seg-reassign {
-    font-size: 11px; color: var(--tx3); background: var(--bg2);
-    border: 1px solid var(--bd); border-radius: 4px; padding: 2px 6px;
-    color: var(--tx2); cursor: pointer;
-  }
   /* Override global `textarea { height: 120px }` — segment rows must stay dense */
   .seg-text {
     width: 100%; height: auto; min-height: 44px; background: transparent; color: var(--tx);
@@ -283,10 +266,77 @@
     resize: none;
     overflow: hidden;
   }
-  /* Final comfortable spacing (explicit class for transition + clarity) */
-  .segments.is-final .seg.seg-final {
-    padding: 10px 12px;
+  /*
+   * FINAL turn layout (assign-forward labeling)
+   * ------------------------------------------
+   * Consecutive segments with the same effective speaker and a gap under
+   * GROUP_GAP_SEC collapse into one turn: timestamp and speaker chip appear
+   * once at the top, then the lines. Denser and quieter than the old
+   * one-card-per-segment layout, which repeated the label and a dropdown on
+   * every row.
+   */
+  .turn {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 0 10px;
+    padding: 7px 12px 8px;
+    border-bottom: 1px solid rgba(51, 51, 51, 0.55);
+    align-items: start;
   }
+  .turn:last-child { border-bottom: none; }
+  .turn:hover { background: rgba(255,255,255,0.02); }
+  .turn-time {
+    font-size: 11px; font-variant-numeric: tabular-nums; color: var(--blu);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    cursor: pointer; user-select: none; padding: 5px 0;
+    min-height: 26px; display: flex; align-items: center;
+  }
+  .turn-time:hover { text-decoration: underline; }
+  .turn-body { min-width: 0; }
+
+  /* Speaker chip: click cycles, shift-click / long-press assigns one line */
+  .turn-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg2); border: 1px solid var(--bd); border-radius: 999px;
+    padding: 2px 9px 2px 7px; margin: 3px 0 2px;
+    font-size: 11.5px; font-weight: 600; line-height: 1.5;
+    color: var(--tx); cursor: pointer; user-select: none;
+    -webkit-user-select: none; touch-action: manipulation;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .turn-chip:hover { border-color: var(--blu); background: var(--bg3); }
+  .turn-chip .speaker-dot { width: 7px; height: 7px; }
+  /* Auto (channel-derived) labels read softer than ones the user pinned */
+  .turn-chip.is-auto { font-weight: 500; color: var(--tx2); }
+  .turn-chip.is-auto .speaker-dot { opacity: 0.5; }
+  /* Unassigned: honest placeholder, no invented name */
+  .turn-chip.is-none {
+    border-style: dashed; color: var(--tx3); font-weight: 500;
+    background: transparent;
+  }
+  .turn-chip.is-none .speaker-dot { background: transparent; border: 1px solid var(--tx3); }
+  /* Single-line assignment (shift-click / long-press) */
+  .turn-chip.is-pinned { border-color: rgba(68,138,255,0.45); }
+
+  .turn-line {
+    font-size: 13.5px; line-height: 1.45; color: var(--tx);
+    padding: 3px 5px; border: 1px solid transparent; border-radius: 4px;
+    white-space: pre-wrap; word-break: break-word; outline: none;
+  }
+  .turn-line:hover { border-color: var(--bd); }
+  .turn-line:focus { border-color: var(--bd); background: var(--bg2); }
+
+  /* Fade the speaker chrome in once when final replaces draft */
+  .segments.speakers-just-revealed .turn-chip {
+    animation: speakers-fade-in 0.3s ease both;
+  }
+
+  .speaker-add {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: transparent; border: 1px dashed var(--bd); border-radius: 999px;
+    padding: 4px 11px; font-size: 12px; color: var(--tx2); cursor: pointer;
+  }
+  .speaker-add:hover { border-color: var(--blu); color: var(--blu); }
 
   .toggle-row {
     display: flex; align-items: flex-start; gap: 10px;
@@ -349,6 +399,7 @@
   <symbol id="ti-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4" /><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z" /><path d="M12 16h.01" /></symbol>
   <symbol id="ti-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 8v4" /><path d="M12 16h.01" /></symbol>
   <symbol id="ti-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" /></symbol>
+  <symbol id="ti-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l0 14" /><path d="M5 12l14 0" /></symbol>
   <symbol id="ti-device-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-10z" /><path d="M7 20h10" /><path d="M9 16v4" /><path d="M15 16v4" /></symbol>
   <symbol id="ti-device-mobile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z" /><path d="M11 4h2" /><path d="M12 17v.01" /></symbol>
 </svg>
@@ -379,7 +430,7 @@
         <li>In the share dialog, pick the meeting tab or entire screen</li>
         <li>Enable <strong>Share tab/system audio</strong>, then Share</li>
       </ol>
-      <p class="note">Mic + system audio are mixed so your voice and remote parties are both recorded. Long meetings (30–90+ min) are auto-optimized and chunked for final transcription; Download audio stays full quality.</p>
+      <p class="note">Your microphone and the meeting audio are recorded on separate channels, so the final transcript can label lines <strong>Me</strong> vs <strong>Them</strong>. Both sides stay audible in the download. Long meetings (30–90+ min) are auto-optimized and chunked for final transcription; Download audio stays full quality.</p>
     </div>
     <div id="how-mob" class="how hidden">
       <strong>Field / mobile — microphone</strong>
@@ -612,12 +663,29 @@
  * (alternate Speaker 1/2 on any silence gap ≥ 1.8 s) has been removed: it read
  * pause timing, not voices, and confidently mislabelled multi-party meetings.
  *
- * TRANSCRIPT DENSITY / SPEAKER UI
- * -------------------------------
+ * ASSIGN-FORWARD LABELING (Feature 2)
+ * -----------------------------------
  * DRAFT: compact text-only rows (timestamp + text), no speaker chrome.
- * FINAL: comfortable spacing; speaker legend, colored labels, rename and
- *   reassign controls appear only when labels actually exist.
- * Transition: when final replaces draft, speaker-bar / seg-meta fade in via CSS.
+ * FINAL: rows are grouped into TURNS — consecutive segments with the same
+ *   effective speaker and a gap under GROUP_GAP_SEC share one timestamp and
+ *   one chip. Clicking the chip cycles speakers; shift-click (or long-press on
+ *   touch) affects that turn only.
+ *
+ * Effective speaker resolves in this order:
+ *   single anchor → nearest forward anchor → channel auto label → unassigned
+ *
+ * Anchors are sparse and keyed by TIME, never by segment index. "Run final
+ * transcription" rebuilds the segment array with different boundaries and a
+ * different count, so index keys would silently re-point at other sentences —
+ * the same class of misattribution the fake speaker labels caused. Timestamps
+ * stay valid because the audio never changes.
+ *
+ * Anchors live in memory only, matching how transcripts already behave (a
+ * reload loses everything). Nothing is written to storage.
+ *
+ * All exports — text download, Word, PDF, and the summary prompt — render the
+ * same turn grouping, and fall back to plain paragraphs when nothing is
+ * labeled. Transition: speaker chrome fades in when final replaces draft.
  *
  * DRAFT FREQUENCY (Settings → "Draft update frequency")
  * ----------------------------------------------------
@@ -667,6 +735,11 @@
   };
   /** Default display names for the two capture sides (renameable like any speaker). */
   const SIDE_SPEAKERS = { me: 'Me', them: 'Them' };
+
+  /** Consecutive same-speaker segments closer than this collapse into one turn. */
+  const GROUP_GAP_SEC = 2.5;
+  /** Tolerance when matching a stored anchor timestamp back onto a segment. */
+  const ANCHOR_MATCH_SEC = 2.0;
 
   /**
    * Final-pass size / chunk thresholds (easy to tune).
@@ -802,6 +875,17 @@
     model: '',
     /** Capture had mic/system on separate channels → auto labels are meaningful */
     stereoSides: false,
+    /** Channel-derived label per segment (parallel to segments[]); null = none */
+    autoSpeakers: [],
+    /**
+     * Manual assignments, sparse and keyed by TIME, not segment index:
+     *   [{ atSec, speakerId, single }]
+     * Timestamps survive a re-run of final transcription (which rebuilds the
+     * segment array with different boundaries); indices would silently shift
+     * and re-attribute lines to the wrong person.
+     * `single` = applies to that one turn only; otherwise applies forward.
+     */
+    anchors: [],
     segments: [],
     speakers: {},
     userEdited: false,
@@ -1518,19 +1602,27 @@
     }
   }
 
-  // Unlabeled segments emit a bare timestamped line rather than an invented name
+  /**
+   * Exports use the same turn grouping the screen does: one paragraph per turn,
+   * speaker named once. Unlabeled turns emit a plain paragraph rather than an
+   * invented name.
+   */
+  function turnText(turn) {
+    return turn.segs.map(s => (s.text || '').trim()).filter(Boolean).join(' ');
+  }
+
   function getActiveTranscriptText() {
-    return transcriptState.segments.map(s => {
-      const sp = speakerName(s.speakerId);
-      const t = fmtTime(s.start);
-      return sp ? `[${t}] ${sp}: ${s.text}` : `[${t}] ${s.text}`;
-    }).join('\n');
+    return buildTurns().map(t => {
+      const sp = speakerName(t.speakerId);
+      const ts = fmtTime(t.startSec);
+      return sp ? `[${ts}] ${sp}: ${turnText(t)}` : `[${ts}] ${turnText(t)}`;
+    }).join('\n\n');
   }
 
   function getPlainTranscriptText() {
-    return transcriptState.segments.map(s => {
-      const sp = speakerName(s.speakerId);
-      return sp ? `${sp}: ${s.text}` : s.text;
+    return buildTurns().map(t => {
+      const sp = speakerName(t.speakerId);
+      return sp ? `${sp}: ${turnText(t)}` : turnText(t);
     }).join('\n\n');
   }
 
@@ -1549,20 +1641,130 @@
    */
   function assignSpeakers(rawSegments, autoIds) {
     const speakers = {};
+    const autoSpeakers = [];
     const segments = rawSegments.map((raw, i) => {
       const speakerId = (autoIds && autoIds[i]) || null;
       if (speakerId && !speakers[speakerId]) {
         speakers[speakerId] = SIDE_SPEAKERS[speakerId] || speakerId;
       }
+      autoSpeakers.push(speakerId);
       return {
         id: uid(),
         start: raw.start,
         end: raw.end,
-        speakerId,
         text: raw.text
       };
     });
-    return { segments, speakers };
+    return { segments, speakers, autoSpeakers };
+  }
+
+  /**
+   * Effective speaker per segment, resolved in one pass:
+   *   1. a `single` anchor landing on this segment  (shift-click / long-press)
+   *   2. else the nearest forward anchor at or before it
+   *   3. else the channel-derived auto label
+   *   4. else null — unassigned, rendered without a name
+   * @returns {Array<string|null>} parallel to transcriptState.segments
+   */
+  function resolveEffectiveSpeakers(segs, auto, anchors) {
+    auto = auto || [];
+    anchors = anchors || [];
+    const forward = anchors.filter(a => !a.single).sort((a, b) => a.atSec - b.atSec);
+    const singles = anchors.filter(a => a.single);
+
+    // Resolve each single anchor onto its closest segment start
+    const pinned = new Map();
+    for (const a of singles) {
+      let best = -1, bestDist = Infinity;
+      for (let i = 0; i < segs.length; i++) {
+        const d = Math.abs((Number(segs[i].start) || 0) - a.atSec);
+        if (d < bestDist) { bestDist = d; best = i; }
+      }
+      if (best >= 0 && bestDist <= ANCHOR_MATCH_SEC) pinned.set(best, a.speakerId);
+    }
+
+    let carried;                 // undefined until the first forward anchor
+    let fi = 0;
+    return segs.map((seg, i) => {
+      const start = Number(seg.start) || 0;
+      while (fi < forward.length && forward[fi].atSec <= start + 0.001) {
+        carried = forward[fi].speakerId;
+        fi++;
+      }
+      if (pinned.has(i)) return pinned.get(i);
+      if (carried !== undefined) return carried;
+      return auto[i] || null;
+    });
+  }
+
+  /**
+   * Group segments into turns for display and export: same effective speaker
+   * and an inter-segment gap under GROUP_GAP_SEC.
+   * @returns {Array<{startSec:number,speakerId:string|null,pinned:boolean,segs:Array}>}
+   */
+  function computeEffectiveSpeakers() {
+    return resolveEffectiveSpeakers(
+      transcriptState.segments, transcriptState.autoSpeakers, transcriptState.anchors
+    );
+  }
+
+  function groupTurns(segs, eff, anchors, auto) {
+    anchors = anchors || [];
+    auto = auto || [];
+    const turns = [];
+    for (let i = 0; i < segs.length; i++) {
+      const prev = turns[turns.length - 1];
+      const gap = prev
+        ? (Number(segs[i].start) || 0) - (Number(prev.segs[prev.segs.length - 1].end) || 0)
+        : Infinity;
+      /*
+       * Break on a change of AUTO label even when the effective label is
+       * unchanged. A forward anchor makes every later turn the same speaker;
+       * without this the channel-derived turns would merge into one block and
+       * take their chips with them, leaving no way to reassign a later turn.
+       * Keeping the channel boundaries keeps every real turn clickable.
+       */
+      const sameAuto = prev && auto[prev.lastIndex] === auto[i];
+      if (prev && prev.speakerId === eff[i] && gap < GROUP_GAP_SEC && sameAuto) {
+        prev.segs.push(segs[i]);
+        prev.lastIndex = i;
+        continue;
+      }
+      turns.push({
+        startSec: Number(segs[i].start) || 0,
+        speakerId: eff[i],
+        firstIndex: i,
+        lastIndex: i,
+        segs: [segs[i]]
+      });
+    }
+    // Mark which turns carry an explicit manual anchor (for chip styling)
+    for (const t of turns) {
+      t.anchored = anchors.some(a => Math.abs(a.atSec - t.startSec) <= ANCHOR_MATCH_SEC);
+      t.pinned = anchors.some(a => a.single && Math.abs(a.atSec - t.startSec) <= ANCHOR_MATCH_SEC);
+    }
+    return turns;
+  }
+
+  function buildTurns() {
+    return groupTurns(
+      transcriptState.segments, computeEffectiveSpeakers(),
+      transcriptState.anchors, transcriptState.autoSpeakers
+    );
+  }
+
+  /**
+   * Set or clear a manual assignment at a turn's start time.
+   * @param {number} atSec       turn start (the anchor key)
+   * @param {string|null} speakerId  null clears the anchor → falls back to auto
+   * @param {boolean} single     true = this turn only, false = forward
+   */
+  function setAnchor(atSec, speakerId, single) {
+    transcriptState.anchors = (transcriptState.anchors || [])
+      .filter(a => Math.abs(a.atSec - atSec) > 0.001);
+    if (speakerId) transcriptState.anchors.push({ atSec, speakerId, single: !!single });
+    transcriptState.anchors.sort((a, b) => a.atSec - b.atSec);
+    transcriptState.userEdited = true;
   }
 
   /** Stable display order: Me, Them, then any user-created speakers. */
@@ -1587,23 +1789,27 @@
    * Never claim more than the signal supports.
    */
   function speakerProvenance() {
-    if (!Object.keys(transcriptState.speakers).length) {
+    const eff = computeEffectiveSpeakers();
+    if (!eff.some(Boolean)) {
       return 'not labeled (Splice does not identify individual speakers)';
     }
-    if (transcriptState.stereoSides) {
-      return '"Me" = this device\'s microphone, "Them" = meeting/system audio. ' +
-        'Attributed by capture channel, not by voice — everyone on this microphone is "Me".';
-    }
-    return 'manually assigned';
+    const manual = (transcriptState.anchors || []).length > 0;
+    const auto = transcriptState.stereoSides &&
+      (transcriptState.autoSpeakers || []).some(Boolean);
+    const channelNote = '"Me" = this device\'s microphone, "Them" = meeting/system audio — ' +
+      'attributed by capture channel, not by voice, so everyone on this microphone is "Me"';
+    if (auto && manual) return channelNote + '; corrected by hand where marked';
+    if (auto) return channelNote;
+    return 'assigned by hand';
   }
 
   function applyTranscript(rawSegments, version, model, autoIds) {
-    const { segments, speakers } = assignSpeakers(rawSegments, autoIds);
-    // Preserve renames if speaker ids already known
-    const mergedSpeakers = { ...speakers };
-    Object.keys(transcriptState.speakers).forEach(id => {
-      if (mergedSpeakers[id]) mergedSpeakers[id] = transcriptState.speakers[id];
-    });
+    const { segments, speakers, autoSpeakers } = assignSpeakers(rawSegments, autoIds);
+    // Preserve renames and any speakers the user created by hand. Anchors are
+    // time-keyed, so they survive this and keep pointing at the right moment
+    // even though the segment array has been rebuilt.
+    const mergedSpeakers = { ...speakers, ...transcriptState.speakers };
+    transcriptState.autoSpeakers = autoSpeakers;
     transcriptState.segments = segments;
     transcriptState.speakers = mergedSpeakers;
     transcriptState.version = version;
@@ -1666,10 +1872,11 @@
       return;
     }
 
-    // ── Speaker legend: FINAL only, and only when labels actually exist ──
-    if (isFinal && hasSpeakers) {
+    // ── Speaker legend: FINAL only. Always offers "+ Add speaker" so a capture
+    //    with no automatic labels (mobile, mono) can still be labelled by hand.
+    if (isFinal) {
       bar.classList.remove('hidden');
-      bar.classList.toggle('speakers-enter', revealingSpeakers);
+      bar.classList.toggle('speakers-enter', revealingSpeakers && hasSpeakers);
       bar.innerHTML = orderedSpeakerIds().map(id => {
         const color = speakerColor(id);
         const name = speakerName(id);
@@ -1680,67 +1887,66 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-pencil"></use></svg>
           </button>
         </span>`;
-      }).join('');
+      }).join('') +
+      `<button type="button" class="speaker-add" onclick="addSpeaker()" title="Add a speaker you can assign lines to">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#ti-plus"></use></svg> Add speaker
+      </button>`;
     } else {
-      // DRAFT, or a capture with no real speaker signal: no speaker chrome at all
+      // DRAFT: no speaker chrome at all
       bar.classList.add('hidden');
       bar.classList.remove('speakers-enter');
       bar.innerHTML = '';
     }
 
-    const speakerIds = (isFinal && hasSpeakers) ? orderedSpeakerIds() : [];
-
-    // ── Segment rows: compact text-only (draft) vs full speaker UI (final) ─
-    host.innerHTML = transcriptState.segments.map(seg => {
-      const t = fmtTime(seg.start);
-      const seek = Number(seg.start) || 0;
-
-      if (isDraft || !isFinal) {
-        // Compact: timestamp + editable text only (no speaker header / dropdown)
+    if (isDraft || !isFinal) {
+      // ── DRAFT: compact timestamp + editable text, no speaker chrome ──
+      host.innerHTML = transcriptState.segments.map(seg => {
+        const t = fmtTime(seg.start);
         return `<div class="seg seg-compact" data-id="${seg.id}">
-          <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
+          <div class="seg-time" onclick="seekTo(${Number(seg.start) || 0})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
           <div class="seg-body">
             <textarea class="seg-text" rows="1" oninput="editSegmentText('${seg.id}', this.value, this)"
               aria-label="Editable draft transcript segment at ${t}">${escapeHtml(seg.text)}</textarea>
           </div>
         </div>`;
-      }
+      }).join('');
+      // Auto-grow so multi-line segments aren't clipped while short ones stay tight
+      host.querySelectorAll('.seg-compact .seg-text').forEach(fitSegTextarea);
+      lastRenderedTxVersion = transcriptState.version;
+      return;
+    }
 
-      // Final: comfortable layout. Speaker chrome only when a label really exists.
-      const name = speakerName(seg.speakerId);
-      let metaHtml = '';
-      if (seg.speakerId && hasSpeakers) {
-        const color = speakerColor(seg.speakerId);
-        const speakerOpts = speakerIds.map(id =>
-          `<option value="${id}"${id === seg.speakerId ? ' selected' : ''}>${escapeHtml(speakerName(id))}</option>`
-        ).join('') + `<option value="__new__">+ New speaker</option>`;
-        metaHtml = `<div class="seg-meta">
-            <button type="button" class="seg-speaker" style="color:${color}" onclick="renameSpeaker('${seg.speakerId}')" title="Rename speaker">
-              ${escapeHtml(name)}
-            </button>
-            <select class="seg-reassign" onchange="reassignSpeaker('${seg.id}', this.value)" title="Change speaker for this segment" aria-label="Reassign speaker">
-              ${speakerOpts}
-            </select>
-          </div>`;
-      }
-      const aria = name
-        ? `Editable transcript segment, ${escapeHtml(name)}`
-        : `Editable transcript segment at ${t}`;
-      return `<div class="seg seg-final" data-id="${seg.id}">
-        <div class="seg-time" onclick="seekTo(${seek})" title="Seek audio to ${t}" role="button" tabindex="0">${t}</div>
-        <div class="seg-body">
-          ${metaHtml}
-          <textarea class="seg-text" rows="2" oninput="editSegmentText('${seg.id}', this.value, this)"
-            aria-label="${aria}">${escapeHtml(seg.text)}</textarea>
+    // ── FINAL: one row per turn (timestamp + chip once, then the lines) ──
+    host.innerHTML = buildTurns().map(turn => {
+      const ts = fmtTime(turn.startSec);
+      const name = speakerName(turn.speakerId);
+      const isAuto = !turn.anchored && !!turn.speakerId;
+      const chipCls = 'turn-chip' +
+        (turn.speakerId ? (isAuto ? ' is-auto' : '') : ' is-none') +
+        (turn.pinned ? ' is-pinned' : '');
+      const dot = turn.speakerId
+        ? `<span class="speaker-dot" style="background:${speakerColor(turn.speakerId)}"></span>`
+        : `<span class="speaker-dot"></span>`;
+      const chipTitle = turn.speakerId
+        ? (isAuto ? 'Auto-labelled from audio channel. Click to change (assigns forward)' : 'Click to change (assigns forward)')
+        : 'Click to assign a speaker from here forward';
+      const lines = turn.segs.map(seg =>
+        `<div class="turn-line" contenteditable="true" data-id="${seg.id}"
+           role="textbox" aria-label="Editable transcript line at ${fmtTime(seg.start)}"
+        >${escapeHtml(seg.text)}</div>`
+      ).join('');
+
+      return `<div class="turn" data-start="${turn.startSec}">
+        <div class="turn-time" onclick="seekTo(${turn.startSec})" title="Seek audio to ${ts}" role="button" tabindex="0">${ts}</div>
+        <div class="turn-body">
+          <button type="button" class="${chipCls}" data-start="${turn.startSec}"
+            title="${chipTitle}. Shift-click or long-press for this turn only.">
+            ${dot}<span>${turn.speakerId ? escapeHtml(name) : '—'}</span>
+          </button>
+          ${lines}
         </div>
       </div>`;
     }).join('');
-
-    // Draft compact: auto-grow textareas so multi-line segments aren't clipped,
-    // while short utterances stay single-line height (dense conversation log).
-    if (isDraft || !isFinal) {
-      host.querySelectorAll('.seg-compact .seg-text').forEach(fitSegTextarea);
-    }
 
     lastRenderedTxVersion = transcriptState.version;
   }
@@ -1784,22 +1990,121 @@
     renderTranscript();
   };
 
-  window.reassignSpeaker = function (segId, value) {
-    const seg = transcriptState.segments.find(s => s.id === segId);
-    if (!seg) return;
-    let speakerId = value;
-    if (value === '__new__') {
-      // Ids are opaque strings now ('me' / 'them' / 's3' …), so pick the first free slot
-      let n = Object.keys(transcriptState.speakers).length + 1;
-      while (transcriptState.speakers['s' + n]) n++;
-      speakerId = 's' + n;
-      const label = prompt('Name for new speaker:', `Speaker ${n}`);
-      transcriptState.speakers[speakerId] = (label && label.trim()) || `Speaker ${n}`;
-    }
-    seg.speakerId = speakerId;
+  /**
+   * Create a speaker and return its id (null if the user cancelled).
+   * Ids are opaque strings ('me' / 'them' / 's3' …) — never array indices.
+   */
+  function createSpeaker() {
+    let n = Object.keys(transcriptState.speakers).length + 1;
+    while (transcriptState.speakers['s' + n]) n++;
+    const label = prompt('Name for new speaker:', `Speaker ${n}`);
+    if (label == null) return null;
+    const id = 's' + n;
+    transcriptState.speakers[id] = label.trim() || `Speaker ${n}`;
     transcriptState.userEdited = true;
-    renderTranscript();
+    return id;
+  }
+
+  window.addSpeaker = function () {
+    if (createSpeaker()) renderTranscript();
   };
+
+  /**
+   * Next value in the chip cycle: each defined speaker in turn, then back to
+   * "no anchor" (auto / unassigned).
+   *
+   * Driven by the turn's ANCHOR, not by its resolved label. Cycling off the
+   * resolved label would make the first click on an auto-labelled turn compute
+   * "clear" — which falls straight back to the same auto label and looks like
+   * the click did nothing.
+   *
+   * @param {object|undefined} existingAnchor anchor currently at this turn
+   */
+  function nextSpeakerInCycle(existingAnchor) {
+    const order = orderedSpeakerIds();
+    if (!order.length) return undefined;
+    if (!existingAnchor) return order[0];
+    const i = order.indexOf(existingAnchor.speakerId);
+    return (i >= 0 && i + 1 < order.length) ? order[i + 1] : null;
+  }
+
+  function anchorAt(atSec) {
+    return (transcriptState.anchors || []).find(a => Math.abs(a.atSec - atSec) < 0.001);
+  }
+
+  /**
+   * Advance a turn's speaker. Writes a time-keyed anchor which applies from
+   * this turn forward until the next anchor — or to this turn only when
+   * `single` (shift-click on desktop, long-press on touch).
+   */
+  function cycleTurnSpeaker(atSec, single) {
+    if (!Number.isFinite(atSec)) return;
+
+    // Nothing defined yet (mobile / mono capture): create the first speaker
+    if (!orderedSpeakerIds().length) {
+      const id = createSpeaker();
+      if (!id) return;
+      setAnchor(atSec, id, single);
+    } else {
+      setAnchor(atSec, nextSpeakerInCycle(anchorAt(atSec)), single);
+    }
+    renderTranscript();
+  }
+
+  /**
+   * One delegated listener set on the scroll host, wired once at init — the
+   * host's innerHTML is rebuilt on every render, so per-element handlers would
+   * be lost each time.
+   */
+  function wireTranscriptInteractions() {
+    const host = el('segments');
+    let pressTimer = null;
+    let longPressed = false;
+    const closest = (e, sel) => (e.target && e.target.closest) ? e.target.closest(sel) : null;
+    const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
+
+    host.addEventListener('pointerdown', e => {
+      const chip = closest(e, '.turn-chip');
+      if (!chip) return;
+      longPressed = false;
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        cycleTurnSpeaker(Number(chip.dataset.start), true);
+      }, 500);
+    });
+    host.addEventListener('pointerup', cancelPress);
+    host.addEventListener('pointerleave', cancelPress);
+    host.addEventListener('pointercancel', cancelPress);
+
+    host.addEventListener('click', e => {
+      const chip = closest(e, '.turn-chip');
+      if (!chip) return;
+      e.preventDefault();
+      // The long-press already handled this gesture; swallow the trailing click
+      if (longPressed) { longPressed = false; return; }
+      cycleTurnSpeaker(Number(chip.dataset.start), e.shiftKey);
+    });
+
+    // Inline editing of turn lines (contenteditable, no re-render on keystroke)
+    host.addEventListener('input', e => {
+      const line = closest(e, '.turn-line');
+      if (!line) return;
+      const seg = transcriptState.segments.find(s => s.id === line.dataset.id);
+      if (!seg) return;
+      seg.text = line.innerText;
+      transcriptState.userEdited = true;
+      updateVersionBadge();
+    });
+
+    // Paste plain text only, so pasted markup can never enter the transcript
+    host.addEventListener('paste', e => {
+      if (!closest(e, '.turn-line')) return;
+      e.preventDefault();
+      const text = ((e.clipboardData || window.clipboardData).getData('text') || '');
+      document.execCommand('insertText', false, text);
+    });
+  }
 
   window.seekTo = function (seconds) {
     const player = el('player');
@@ -2059,6 +2364,8 @@
     transcriptState.model = '';
     transcriptState.segments = [];
     transcriptState.speakers = {};
+    transcriptState.autoSpeakers = [];
+    transcriptState.anchors = [];
     transcriptState.userEdited = false;
     if (full) {
       transcriptState.summaryMarkdown = '';
@@ -2464,12 +2771,13 @@
       summaryMode: modeLabel
     };
 
-    const transcriptHtml = transcriptState.segments.map(s => {
-      const sp = speakerName(s.speakerId);
+    // Same turn grouping as the screen: speaker named once per turn
+    const transcriptHtml = buildTurns().map(t => {
+      const sp = speakerName(t.speakerId);
       const head = sp
-        ? `[${fmtTime(s.start)}] ${escapeHtml(sp)}:`
-        : `[${fmtTime(s.start)}]`;
-      return `<p style="margin:0 0 10px 0;"><strong>${head}</strong> ${escapeHtml(s.text)}</p>`;
+        ? `[${fmtTime(t.startSec)}] ${escapeHtml(sp)}:`
+        : `[${fmtTime(t.startSec)}]`;
+      return `<p style="margin:0 0 10px 0;"><strong>${head}</strong> ${escapeHtml(turnText(t))}</p>`;
     }).join('');
 
     const summaryHtml = transcriptState.summaryMarkdown
@@ -2537,15 +2845,30 @@
   };
 
   /**
-   * Filter internals exposed for synthetic tests and for tuning thresholds from
-   * the console against real field recordings, e.g.
-   *   __splice.TX_FILTER.PROMPT_SIMILARITY_MAX = 0.7
-   * Pure helpers only — no app state is reachable or mutable through here.
+   * Development / tuning surface. Two kinds of member:
+   *  - pure helpers and threshold objects, for synthetic tests and for tuning
+   *    against real field recordings (e.g. __splice.TX_FILTER.SILENT_FRAME_RMS)
+   *  - loadSample(), which pushes a fake transcript into the UI so the turn
+   *    layout can be exercised without recording a meeting. It only writes
+   *    transcript state, never touches audio, settings, or the API key.
    */
   window.__splice = {
-    APP_VERSION, MODELS, ASR_PROMPT, TX_FILTER, DIARIZE,
+    APP_VERSION, MODELS, ASR_PROMPT, TX_FILTER, DIARIZE, GROUP_GAP_SEC,
     promptLeakScore, segmentDropReason, bufferHasSpeech,
-    computeChannelEnvelopes, attributeSegmentsByChannel
+    computeChannelEnvelopes, attributeSegmentsByChannel,
+    resolveEffectiveSpeakers, groupTurns,
+    loadSample(rawSegments, autoIds, stereo) {
+      transcriptState.stereoSides = !!stereo;
+      transcriptState.anchors = [];
+      transcriptState.speakers = {};
+      transcriptState.durationSec = rawSegments[rawSegments.length - 1].end;
+      applyTranscript(rawSegments, 'final', MODELS.final, autoIds);
+      return buildTurns().length;
+    },
+    state: () => transcriptState,
+    exportText: () => getActiveTranscriptText(),
+    summaryInput: () => getPlainTranscriptText(),
+    provenance: () => speakerProvenance()
   };
 
   // ── Init ──────────────────────────────────────────────────────────────
@@ -2556,6 +2879,7 @@
   if (isDesktop) el('how-desk').classList.remove('hidden');
   else el('how-mob').classList.remove('hidden');
 
+  wireTranscriptInteractions();
   renderTranscript();
 
   // Re-acquire wake lock if tab becomes visible again during recording
